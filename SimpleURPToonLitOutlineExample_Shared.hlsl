@@ -76,10 +76,13 @@ struct Varyings
 
 // all sampler2D don't need to put inside CBUFFER | ËùÓĞµÄ sampler2D ¶¼²»ĞèÒª·ÅÔÚ CBUFFER ÀïÃæ 
 sampler2D _BaseMap; 
+sampler2D _RampMap;
 sampler2D _EmissionMap;
 sampler2D _OcclusionMap;
 sampler2D _OutlineZOffsetMaskTex;
+sampler2D _FaceLightMap;
 sampler2D _LightMap;
+sampler2D _MetalMap;
 sampler2D _MaskMap;
 
 // put all your uniforms(usually things inside .shader file's properties{}) inside this CBUFFER, in order to make SRP batcher compatible
@@ -90,6 +93,8 @@ CBUFFER_START(UnityPerMaterial)
     
     // high level settings
     float   _IsFace;
+    float   _IsHair;
+    int     _InNight;
 
     // base color
     float4  _BaseMap_ST;
@@ -98,8 +103,14 @@ CBUFFER_START(UnityPerMaterial)
     // alpha
     half    _Cutoff;
 
+    // shadow ramp
+    half    _AlbedoMulByRampColor;
+
     // emission
     float   _UseEmission;
+    float   _isGenshinEmission;
+    float   _isBlink;
+    half    _EmissionStrength;
     half3   _EmissionColor;
     half    _EmissionMulByBaseColor;
     half3   _EmissionMapChannelMask;
@@ -122,9 +133,17 @@ CBUFFER_START(UnityPerMaterial)
     half    _MainLightIgnoreCelShade;
     half    _AdditionalLightIgnoreCelShade;
 
-    // lightmap
+    // face lightmap
+	float _UseFaceLightMap;
+	half3 _FaceShadowColor;
+    half _FaceShadowRangeSmooth;
+    
+    // body/hair lightmap
 	float _UseLightMap;
-	half3 _ShadowColor;
+    half  _HairSpecularStrength;
+    
+    // metal specular
+    half3 _MetalColor;
 
     // rimlight
 	float _UseRimLight;
@@ -134,6 +153,7 @@ CBUFFER_START(UnityPerMaterial)
 	half _RimSmooth;
     half _RimMaskStrength;
     half _RimIntensity;
+    half _RimMulByBaseColor;
 
     // shadow mapping
     half    _ReceiveShadowMappingAmount;
@@ -149,7 +169,7 @@ CBUFFER_START(UnityPerMaterial)
 
 CBUFFER_END
 
-// Õâ²»ÊÇÒ»¸ö¡°Ã¿¸ö²ÄÁÏµÄuniform¡±£¨per material uniform£©£¬ËùÒÔ·ÅÔÚCBUFFERÍâÃæ£¿£¿£¿£¿£¿£¿
+// Õâ²»ÊÇÒ»¸ö¡°Ã¿¸ö²ÄÁÏµÄuniform¡±£¨per material uniform£©£¬ËùÒÔ·ÅÔÚCBUFFERÍâÃæ£¿£¿£¿
 //a special uniform for applyShadowBiasFixToHClipPos() only, it is not a per material uniform, 
 //so it is fine to write it outside our UnityPerMaterial CBUFFER
 float3 _LightDirection;
@@ -160,10 +180,16 @@ struct ToonSurfaceData
     half    alpha;
     half3   emission;
     half    occlusion;
-    // lightmap
+    // Face lightmap
+	float _useFaceLightMap;
+    half3 _facelightMapL; // ²ÉÑùÖµ
+    half3 _faceLightMapR; // ²ÉÑùÖµ
+    // Body/hair lightmap
 	float _useLightMap;
-    half3 _lightMapL; // ²ÉÑùÖµ
-    half3 _lightMapR; // ²ÉÑùÖµ
+    half4 _lightMap; // ²ÉÑùÖµ
+    // Metal Specular
+    //half3 _MetalMap; // ²ÉÑùÖµ
+    half3 _MetalColor;
     // shadow color
 	half3 _shadowColor; // 
     // rimlight
@@ -323,12 +349,24 @@ half4 GetFinalBaseColor(Varyings input)
 {
     return tex2D(_BaseMap, input.uv) * _BaseColor;
 }
-half3 GetFinalEmissionColor(Varyings input)
+half3 GetFinalEmissionColor(Varyings input, float4 baseColorFinal)
 {
     half3 result = 0;
     if(_UseEmission)
     {
-        result = tex2D(_EmissionMap, input.uv).rgb * _EmissionMapChannelMask * _EmissionColor.rgb;
+        if(_isGenshinEmission) 
+        {   
+            // Ô­ÉñµÄ½ÇÉ«×Ô·¢¹â£¬Ê¹ÓÃBaseMapµÄAlphaÍ¨µÀ×÷Îª×Ô·¢¹âMask£¬RGBÍ¨µÀ×÷Îª×Ô·¢¹âÑÕÉ«
+
+            //TODO£ºÕâÀï²»ÓÃbaseColorFinal£¬ÓÃtex2D(_BaseMap, input.uv)£¬
+            //µ«ÕâÑùºÍÉÏÃæµÄGetFinalBaseColor¾Í²ÉÑùÁË2´Î_BaseMap£¬ÖØ¸´ÁË
+            result = baseColorFinal.rgb * baseColorFinal.a * _EmissionStrength * _EmissionColor.rgb;
+            result *= _isBlink ? abs((frac(_Time.y * 0.5) - 0.5) * 2) : 1; //ÉÁË¸Ğ§¹û
+        }
+        else 
+        {
+            result = tex2D(_EmissionMap, input.uv).rgb * _EmissionMapChannelMask * _EmissionColor.rgb;
+        }
     }
 
     return result;
@@ -350,8 +388,37 @@ half GetFinalOcculsion(Varyings input)
 }
 half3 GetFinalShadowColor(Varyings input) 
 {
-	return _ShadowColor.rgb;
+	return _FaceShadowColor.rgb;
 }
+// Face lightMap
+half GetUseFaceLightMap(Varyings input)
+{
+	if (_UseFaceLightMap)
+	{
+		return 1;
+	}
+	return 0;
+}
+half3 GetLeftLightMap(Varyings input) //ÕâÀïµÄLightMapÊÇÁ³²¿sdfÌùÍ¼£¬ÓÉÓÚÖ»´æÁË0-90¡ã¹âÕÕÏÂµÄÒõÓ°£¬×ó°ëÁ³´Ó×óµ½ÓÒÕı³£²ÉÑù
+{
+	if (_UseFaceLightMap)
+	{
+		float4 lightMapL = tex2D(_FaceLightMap, input.uv);
+		return lightMapL;
+	}
+	return 1;
+}
+half3 GetRightLightMap(Varyings input) //ÕâÀïµÄLightMapÊÇÁ³²¿sdfÌùÍ¼£¬ÓÉÓÚÖ»´æÁË0-90¡ã¹âÕÕÏÂµÄÒõÓ°£¬ÓÒ°ëÁ³´ÓÓÒµ½×ó·´×ªuv.x²ÉÑù
+{
+	if (_UseFaceLightMap)
+	{
+		float2 flippedUV = float2(1 - input.uv.x, input.uv.y);
+		float4 lightMapR = tex2D(_FaceLightMap, flippedUV);
+		return lightMapR;
+	}
+	return 1;
+}
+// Body lightMap
 half GetUseLightMap(Varyings input)
 {
 	if (_UseLightMap)
@@ -360,32 +427,31 @@ half GetUseLightMap(Varyings input)
 	}
 	return 0;
 }
-half3 GetLeftLightMap(Varyings input) //ÕâÀïµÄLightMapÊÇsdfÌùÍ¼£¬ÓÉÓÚÖ»´æÁË0-90¡ã¹âÕÕÏÂµÄÒõÓ°£¬×ó°ëÁ³´Ó×óµ½ÓÒÕı³£²ÉÑù
+half4 GetLightMap(Varyings input) //ÕâÀïµÄLightMapÊÇÉíÌåµÄlightmap£¨Ô­ÉñÊ½body lightmap£©
 {
 	if (_UseLightMap)
 	{
-		float4 lightMapL = tex2D(_LightMap, input.uv);
-		return lightMapL;
+		float4 lightMap = tex2D(_LightMap, input.uv);
+		return lightMap;
 	}
-	return 1;
+	return 1; //¡£¡£¡£
 }
-half3 GetRightLightMap(Varyings input) //ÕâÀïµÄLightMapÊÇsdfÌùÍ¼£¬ÓÉÓÚÖ»´æÁË0-90¡ã¹âÕÕÏÂµÄÒõÓ°£¬ÓÒ°ëÁ³´ÓÓÒµ½×ó·´×ªuv.x²ÉÑù
-{
-	if (_UseLightMap)
-	{
-		float2 flippedUV = float2(1 - input.uv.x, input.uv.y);
-		float4 lightMapR = tex2D(_LightMap, flippedUV);
-		return lightMapR;
-	}
-	return 1;
-}
-
 half GetUseRimLight(Varyings input) {
 	if (_UseRimLight) { // °üÀ¨RimLight,1,FakeSSS,2
 		return 1;
 	}
 	return 0;
 }
+// Metal Specular
+//half3 GetMetalMap(Varyings input)
+//{
+//	return tex2D(_MetalMap, input.uv);
+//}
+half3 GetFinalMetalColor(Varyings input) 
+{
+	return _MetalColor.rgb;
+}
+// Rim
 half4 GetRimColor(Varyings input) {
 	return _RimColor;
 }
@@ -410,12 +476,14 @@ half GetRimIntensity(Varyings input)
 {
     return _RimIntensity;
 }
+
 void DoClipTestToTargetAlphaValue(half alpha) // Í¸Ã÷¶È²âÊÔ AlphaTest/AlphaClipping
 {
 #if _UseAlphaClipping
     clip(alpha - _Cutoff);
 #endif
 }
+
 ToonSurfaceData InitializeSurfaceData(Varyings input) // ³õÊ¼»¯ ToonSurfaceData ½á¹¹Ìå
 {
     ToonSurfaceData output;
@@ -427,17 +495,25 @@ ToonSurfaceData InitializeSurfaceData(Varyings input) // ³õÊ¼»¯ ToonSurfaceData 
     DoClipTestToTargetAlphaValue(output.alpha);// early exit if possible // ¾¡Á¿°ÑÍ¸Ã÷¶È²âÊÔÌáÇ°
 
     // emission
-    output.emission = GetFinalEmissionColor(input);
+    output.emission = GetFinalEmissionColor(input, baseColorFinal);
 
     // occlusion
     output.occlusion = GetFinalOcculsion(input);
 
-    // lightmap
-	output._useLightMap = GetUseLightMap(input);
-	output._lightMapL = GetLeftLightMap(input);
-	output._lightMapR = GetRightLightMap(input);
+    // Face lightmap
+	output._useFaceLightMap = GetUseFaceLightMap(input);
+	output._facelightMapL = GetLeftLightMap(input);
+	output._faceLightMapR = GetRightLightMap(input);
+
+    // Body lightmap
+	output._lightMap = GetLightMap(input);
+
+    // Metal specular
+	//output._MetalMap = GetMetalMap(input);
+    output._MetalColor = GetFinalMetalColor(input);
 
 	// shadow color
+	output._useLightMap = GetUseLightMap(input);
 	output._shadowColor = GetFinalShadowColor(input);
 
 	// rim light
@@ -474,10 +550,10 @@ ToonLightingData InitializeLightingData(Varyings input) // ³õÊ¼»¯ lightingData ½
 
 // this function contains no lighting logic, it just pass lighting results data around
 // the job done in this function is "do shadow mapping depth test positionWS offset"
-// | Õâ¸öº¯Êı²»°üº¬¹âÕÕÂß¼­£¬ËüÖ»ÊÇ´«µİ¹âÕÕ½á¹ûÊı¾İ
-// Õâ¸öº¯ÊıÖĞÍê³ÉµÄ¹¤×÷ÊÇ¡°ÒõÓ°Ó³Éä Éî¶È²âÊÔ ÊÀ½çÎ»ÖÃÆ«ÒÆ¡±£¿£¿£¿£¿£¿£¿
+// | Õâ¸öº¯Êı²»°üº¬¹âÕÕÂß¼­£¬ËüÖ»ÊÇ´«µİ¹âÕÕ½á¹ûÊı¾İ£¬Õâ¸öº¯ÊıÖĞÍê³ÉµÄ¹¤×÷ÊÇ¡°ÒõÓ°Ó³Éä Éî¶È²âÊÔ ÊÀ½çÎ»ÖÃÆ«ÒÆ¡±£¿
 half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
 {
+    //==============================================================================================
     // Indirect lighting | ¼ä½Ó¹âÕÕ
     half3 indirectResult = ShadeGI(surfaceData, lightingData);
 
@@ -507,6 +583,8 @@ half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
     //////////////////////////////////////////////////////////////////////////////////
 
     //==============================================================================================
+    // Ö±½Ó¹âÔ´£ºÖ÷¹âÔ´
+
     // Main light is the brightest directional light.
     // It is shaded outside the light loop and it has a specific set of variables and shading path
     // so we can be as fast as possible in the case when there's only a single directional light
@@ -589,10 +667,11 @@ half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
     // Main light | Ö÷¹âÔ´
     half3 mainLightResult = ShadeSingleLight(surfaceData, lightingData, mainLight, false);
     // Face Shadow Mask
-    half3 faceShadowMask = ShadeFaceShadow(surfaceData, lightingData, mainLight); // ·µ»ØÖµÊÇ0=(0,0,0)»ò1=(1,1,1)
+    // faceShadowMaskÖ»ÓĞ2ÖÖ·µ»ØÖµ£º0=(0,0,0)»ò1=(1,1,1)
+    half3 faceShadowMask = ShadeFaceShadow(surfaceData, lightingData, mainLight);
 
     //==============================================================================================
-    // All additional lights | ËùÓĞ¶îÍâµÄ¹âÔ´
+    // All additional lights | Ö±½Ó¹âÕÕ£ºËùÓĞ¶îÍâµÄ¹âÔ´
 
     half3 additionalLightSumResult = 0;
 
@@ -634,13 +713,14 @@ half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
         additionalLightSumResult += ShadeSingleLight(surfaceData, lightingData, light, true);
     }
 #endif
-    //==============================================================================================
 
+    //==============================================================================================
     // emission + rimLight | ×Ô·¢¹â + ±ßÔµ¹â
     //half3 emissionResult = ShadeEmission(surfaceData, lightingData); //Ô­°æ
-    half3 emissionRimLightResult = ShadeEmission(surfaceData, lightingData, mainLight); //¸Ä½ø
-
-    // ºÏ³ÉÕâĞ©¹â£º¼ä½Ó¹âÕÕ + Ö÷¹âÕÕ + ËùÓĞ¶îÍâ¹âÕÕ + ×Ô·¢¹â
+    half3 emissionRimLightResult = ShadeEmissionAndRim(surfaceData, lightingData, mainLight); //¸Ä½ø
+    
+    //==============================================================================================
+    // ºÏ³É£º¼ä½Ó¹âÕÕ + Ö÷¹âÕÕ + ËùÓĞ¶îÍâ¹âÕÕ + ×Ô·¢¹â
     //return CompositeAllLightResults(indirectResult, mainLightResult, additionalLightSumResult, emissionRimLightResult, surfaceData, lightingData); //Ô­°æ
     return CompositeAllLightResults(indirectResult, mainLightResult, additionalLightSumResult, emissionRimLightResult, faceShadowMask, surfaceData, lightingData); //¸Ä½ø
 }
@@ -653,22 +733,17 @@ half3 ConvertSurfaceColorToOutlineColor(half3 originalSurfaceColor)
 half3 ApplyFog(half3 color, Varyings input)
 {
     half fogFactor = input.positionWSAndFogFactor.w;
-    // Mix the pixel color with fogColor. You can optionaly use MixFogColor to override the fogColor
-    // with a custom one.
     // MixFog º¯Êı¶¨ÒåÔÚCore.hlsl ÖĞ
+    // Mix the pixel color with fogColor. You can optionaly use MixFogColor to override the fogColor with a custom one.
     color = MixFog(color, fogFactor);
 
     return color;  
 }
 
-// Æ¬Ôª×ÅÉ«Æ÷´úÂë£¨ÓÃÓÚ ForwardLit ºÍ Outline 2¸öPass£©£¬ÆäÖĞ»á¸ù¾İToonShaderIsOutlineºê×÷ÎªÌõ¼ş½øĞĞ²»Í¬µÄ´¦Àí
-// only the .shader file will call this function by 
-// #pragma fragment ShadeFinalColor
+// Æ¬Ôª×ÅÉ«Æ÷º¯Êı£¨ÓÃÓÚ ForwardLit ºÍ Outline 2¸öPass£©£¬»á¶Ôoutline×ö¶îÍâ´¦Àí
 half4 ShadeFinalColor(Varyings input) : SV_TARGET
 {
-    //////////////////////////////////////////////////////////////////////////////////////////
     // first prepare all data for lighting function | Ê×ÏÈ×¼±¸ÕÕÃ÷¹¦ÄÜµÄËùÓĞÊı¾İ
-    //////////////////////////////////////////////////////////////////////////////////////////
 
     // fillin ToonSurfaceData struct: | Ìî³ä ToonSurfaceData ½á¹¹Ìå£º
     ToonSurfaceData surfaceData = InitializeSurfaceData(input);
@@ -689,10 +764,7 @@ half4 ShadeFinalColor(Varyings input) : SV_TARGET
     return half4(color, surfaceData.alpha);
 }
 
-// Æ¬Ôª×ÅÉ«Æ÷´úÂë£¨½öÓÃÓÚ ShadowCaster Pass ºÍ DepthOnly Pass 2¸öPass£©
-//////////////////////////////////////////////////////////////////////////////////////////
-// fragment shared functions (for ShadowCaster pass & DepthOnly pass to use only)
-//////////////////////////////////////////////////////////////////////////////////////////
+// Æ¬Ôª×ÅÉ«Æ÷º¯Êı£¨ÓÃÓÚ ShadowCaster Pass ºÍ DepthOnly Pass£©
 void BaseColorAlphaClipTest(Varyings input)
 {
     DoClipTestToTargetAlphaValue(GetFinalBaseColor(input).a);

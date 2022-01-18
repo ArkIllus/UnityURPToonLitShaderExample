@@ -31,6 +31,8 @@ Shader "SimpleURPToonLitExample(With Outline)"
     {
         [Header(High Level Setting)]
         [ToggleUI]_IsFace("Is Face? (please turn on if this is a face material)", Float) = 0
+        [ToggleUI]_IsHair("Is Hair? (please turn on if this is a hair material)", Float) = 0
+        [Toggle(IN_NIGHT)]_InNight("In night?",int) = 0
 
         // all properties will try to follow URP Lit shader's naming convention
         // so switching your URP lit material's shader to this toon lit shader will preserve most of the original properties if defined in this shader
@@ -46,10 +48,20 @@ Shader "SimpleURPToonLitExample(With Outline)"
 
         [Header(Emission)]
         [Toggle]_UseEmission("_UseEmission (on/off Emission completely)", Float) = 0
-        [HDR] _EmissionColor("_EmissionColor", Color) = (0,0,0)
-        _EmissionMulByBaseColor("_EmissionMulByBaseColor", Range(0,1)) = 0 //控制自发光颜色乘上albedo颜色（Base颜色）的程度
-        [NoScaleOffset]_EmissionMap("_EmissionMap", 2D) = "white" {}
-        _EmissionMapChannelMask("_EmissionMapChannelMask", Vector) = (1,1,1,0) //默认alpha通道的Mask是0
+        [Toggle]_isGenshinEmission("_isGenshinEmission (turn on if is Genshin Character Type Emission)", Float) = 1
+        [Toggle]_isBlink("_isBlink", Float) = 1 //闪烁效果
+        [HDR] _EmissionColor("_EmissionColor", Color) = (1,1,1)
+        _EmissionStrength("_EmissionStrength", Range(0.0, 10.0)) = 0.1
+        //原神式角色Emission不用下面三个属性
+        _EmissionMulByBaseColor("_EmissionMulByBaseColor(not used if _isGenshinEmission)", Range(0,1)) = 0 //控制自发光颜色乘上albedo颜色的程度
+        [NoScaleOffset]_EmissionMap("_EmissionMap(not used if _isGenshinEmission)", 2D) = "white" {} //原神式角色Emission用_BaseMap
+        _EmissionMapChannelMask("_EmissionMapChannelMask(not used if _isGenshinEmission)", Vector) = (1,1,1,0) //默认alpha通道的Mask是0（感觉没啥用）
+
+        [Header(Shadow Ramp)]
+        [Toggle(ENABLE_RAMP_SHADOW)] _EnableRampShadow ("Enable Ramp Shadow", float) = 1
+        _RampMap("_ShadowRampMap", 2D) = "white" {}
+        _AlbedoMulByRampColor("_AlbedoMulByRampColor", range(0.0, 1.0)) = 0.3 //控制albedo颜色乘上ramp颜色的程度
+        //TODO: 目前这个和脸部sdf阴影非常冲突
 
         [Header(Occlusion)] 
         //occlusion值是一个half（范围=[0,1]），目前会在ShadeGI（间接光照）和ShadeSingleLight（光源直接光照）中用到
@@ -71,11 +83,23 @@ Shader "SimpleURPToonLitExample(With Outline)"
         _MainLightIgnoreCelShade("_MainLightIgnoreCelShade", Range(0,1)) = 0 //控制主光源忽略cel风格的明暗部结果的程度（比如可以让脸部更亮）
         _AdditionalLightIgnoreCelShade("_AdditionalLightIgnoreCelShade", Range(0,1)) = 0.8  //控制额外光源忽略cel风格的明暗部结果的程度（比如可以让脸部更亮）
 
-        [Header(Lightmap)]
-		[Toggle]_UseLightMap("_UseLightMap (on/off Custom Lightmap)", Float) = 0
-		[NoScaleOffset]_LightMap("_LightMap", 2D) = "white" {}
+        [Header(Face Lightmap (sdf))]
+		[Toggle]_UseFaceLightMap("_UseFaceLightMap (on/off Custom FaceLightmap)", Float) = 0
+		[NoScaleOffset]_FaceLightMap("_FaceLightMap", 2D) = "white" {}
         //[Header(ShadowColor)]
-		_ShadowColor("_ShadowColor(Face sdf)", Color) = (0,0,0) //好像只是用来做面部阴影的
+		_FaceShadowColor("_FaceShadowColor (only valid for Face sdf shadow)", Color) = (0,0,0) //只是用来做面部sdf阴影的
+        _FaceShadowRangeSmooth("_FaceShadowRangeSmooth(not used)", Range(0.0, 1.0)) = 0.001 //用于smoothstep在[0,1]之间平滑过渡以避免面部阴影分界线的锯齿(然而效果不好，已经不用了)
+
+        [Header(Lightmap (body hair Genshin type))] 
+        // 目前只有身体（衣服）和头发有此贴图
+        // 目前有此Lightmap才有高光项、金属高光项
+		[Toggle]_UseLightMap("_UseLightMap (Enable specular/metalSpecular)", Float) = 0
+        _LightMap("_LightMap", 2D) = "white" {}
+        _HairSpecularStrength("_HairSpecularStrength", Range(0.0, 1.0)) = 1.0
+        
+        [Header(Metal Specular (Genshin type))]
+        _MetalMap("_MetalMap (MatCap) (only works if use lightmap)", 2D) = "white"{}
+        _MetalColor("_Metal Color", Color) = (1, 1, 1, 1) //到底需不需要这个呢
 
         [Header(Rim Light)]
         [Enum(off,0,RimLight,1,FakeSSS,2)]_UseRimLight("_UseRimLight", Float) = 0 //FakeSSS好像没有使用啊？
@@ -85,14 +109,9 @@ Shader "SimpleURPToonLitExample(With Outline)"
         _RimSmooth ("RimSmooth", Range(0, 1)) = 1 //控制边缘光的软硬（_RimSmooth=1时，smoothstep(0, 1, rim)≈rim，_RimSmooth=0时，smoothstep(0, 0, rim)=1）
         [NoScaleOffset]_MaskMap("_MaskMap (G: rim lgiht)", 2D) = "white" {} //遮罩贴图
         _RimMaskStrength("_RimMaskStrength", Range(0.0, 1.0)) = 1.0 // 控制遮罩的程度
-        _RimInstensity("_RimInstensity", Range(0.0, 1.0)) = 1.0 // 控制边缘光的强度
-        //_FresnelEff("_FresnelEff", Range(0, 1)) = 1 //控制菲涅尔边缘光强度
-        //-------------------------------------new-------------------------------------
+        _RimMulByBaseColor("_RimMulByBaseColor", Range(0,1)) = 0.5 //控制边缘光颜色乘上albedo颜色（Base颜色）的程度
+        _RimIntensity("_RimIntensity", Range(0.0, 4.0)) = 1.0 // 控制边缘光的强度
         // TODO: rampTexture 渐变纹理 ？
-
-        
-        [Header(Specular)]
-        //TODO
 
         [Header(Normal map)]
         //TODO
@@ -210,7 +229,9 @@ Shader "SimpleURPToonLitExample(With Outline)"
             // 开启额外光源，_ADDITIONAL_LIGHTS_VERTEX会在顶点着色器计算额外光照，光照模型是Lambert。_ADDITIONAL_LIGHTS会在片元着色器计算额外光照，光照模型是简易的PBR。？？？
             // 额外光源阴影，该关键字是为了函数AdditionalLightRealtimeShadow(int lightIndex, float3 positionWS)得到正确的阴影衰减，是必须内容。
             // 开启软阴影
-
+            
+            #pragma shader_feature_local_fragment ENABLE_RAMP_SHADOW 
+            //只在ForwardLit Pass使用，是否使用Ramp贴图
 
             // ---------------------------------------------------------------------------------------------
             // Unity defined keywords
