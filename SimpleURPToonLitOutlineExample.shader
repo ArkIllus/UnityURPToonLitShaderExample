@@ -113,6 +113,19 @@ Shader "SimpleURPToonLitExample(With Outline)"
         _RimIntensity("_RimIntensity", Range(0.0, 4.0)) = 1.0 // 控制边缘光的强度
         // TODO: rampTexture 渐变纹理 ？
 
+        [Header(Screen Space Rim Light)]
+		[Toggle]_EnableSSRim ("Enable SS Rim", Float) = 0
+		_SSRimIntensity ("SS Rim Intensity", Range(0, 1)) = 1
+		[HDR]_SSRimColor ("SS Rim Color(A:Blend Diffuse)", Color) = (1, 1, 1, 0)
+		[PowerSlider(2)]_SSRimWidth ("SS Rim Width", Range(0, 100)) = 5
+		_SSRimWidthRamp ("SS Rim Width Ramp", 2D) = "white" { }
+		_SSRimRampMaxDistance ("SS Rim Ramp Max Distance", Float) = 10
+		_SSRimLength ("SS Rim Length", Range(-2, 2)) = 0
+		[Toggle]_SSRimInvertLightDir ("SS Rim Invert LightDir", Float) = 0
+		_SSRimFeather ("SS Rim Feather", Range(0, 30)) = 15
+		_SSRimInShadow ("SS Rim In Shadow", Range(0, 1)) = 0.5
+		_SSRimMask ("Mask(R:Width A:Intensity)", 2D) = "white" {}
+
         [Header(Normal map)]
         //TODO
 
@@ -384,8 +397,8 @@ Shader "SimpleURPToonLitExample(With Outline)"
             // | 这个pass中我们需要的唯一关键字 = _UseAlphaClipping，它已经在 HLSLINCLUDE 块中定义了 (所以在这个过程中不需要编写任何 multi_compile 或 shader_feature)
 
             #pragma vertex VertexShaderWork
-            #pragma fragment BaseColorAlphaClipTest // we only need to do Clip(), no need color shading
-                                                    // 只是做 透明度测试 ，没有其他任何工作
+            #pragma fragment BaseColorAlphaClipTest // we only need to do Clip(), no need color shadings
+                                                    //// 只是做 透明度测试 ，没有其他任何工作
 
             // because Outline area should write to depth also, define "ToonShaderIsOutline" to inject outline related code into VertexShaderWork()
             // | 因为 Outline 区域也应该深度写入，所以定义这个宏，将outline相关代码注入到 顶点着色器VertexShaderWork()中

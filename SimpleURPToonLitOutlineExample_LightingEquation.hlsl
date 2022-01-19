@@ -101,6 +101,7 @@ half3 NPR_MetalSpecular(float3 normalWS, float4 lightMap)
 
 // 采样原神式Ramp贴图
 // 参考：Samplee、世界
+// TODO: 梯度漫反射效果
 half3 NPR_Ramp(half NdotL, half _InNight, float4 lightMap) 
 {
     //使用[身体(衣服)]lightMap的A通道：RampAreaMask 作为RampMap采样坐标的y值
@@ -325,6 +326,10 @@ half3 ShadeSingleLight_v1(ToonSurfaceData surfaceData, ToonLightingData lighting
 
     half3 finalColor = diffuse + specular + hairAdditionalSpecular + metalSpecular;
 
+    //half4 finalColor_and_litOrShadowArea = (finalColor, 1);
+
+    //return finalColor_and_litOrShadowArea; //把litOrShadowArea（范围[0,1]）存到alpha通道中
+
     return finalColor;
 }
 
@@ -441,41 +446,129 @@ float3 Fresnel_RimLight(float NdotV,float VdotL,float3 baseColor) {
 大概看了一下，有亿点点复杂，但本质上核心应该是使用dot(N, L)计算边缘光，然后有个RimLightMask贴图（非常重要，然而那个贴图只有鼻子那里有边缘光）
 */
 
+// =======================================================================================================
 //【JTRP】屏幕空间深度边缘光 Screen Space Depth Rimlight https://zhuanlan.zhihu.com/p/139290492
+float GetScaleWithHight()
+{
+    /*
+    float4 _ScreenParams	
+    x is the width of the camera’s target texture in pixels, 
+    y is the height of the camera’s target texture in pixels, 
+    z is 1.0 + 1.0/width and w is 1.0 + 1.0/height.
+    */
+	return _ScreenParams.y / 1080; // ？？？
+}
 /*
-float2 L_View = normalize(mul((float3x3)UNITY_MATRIX_V, context.L).xy);
-float2 N_View = normalize(mul((float3x3)UNITY_MATRIX_V, lerp(context.N, context.SN, _RimLightSNBlend)).xy);
-float lDotN = saturate(dot(N_View, L_View) + _RimLightLength * 0.1);
-float2 ssUV = posInput.positionSS + N_View * lDotN * _RimLightWidth * input.color.b * 40 * GetSSRimScale(posInput.linearDepth);
-float depthTex = LoadCameraDepth(clamp(ssUV, 0, _ScreenParams.xy - 1));
-float depthScene = LinearEyeDepth(depthTex, _ZBufferParams);
-float depthDiff = depthScene - posInput.linearDepth;
-float intensity = smoothstep(0.24 * _RimLightFeather * posInput.linearDepth, 0.25 * posInput.linearDepth, depthDiff);
-intensity *= lerp(1, _RimLightIntInShadow, context.shadowStep) * _RimLightIntensity * mask;
-            
-float3 ssColor = intensity * lerp(1, context.brightBaseColor, _RimLightBlend)
-* lerp(_RimLightColor.rgb, context.pointLightColor, luminance * _RimLightBlendPoint);
-            
-c = max(c, ssColor);
+float3 GetCameraRelativePositionWS(float3 _WorldSpaceCameraPos)
+{
+    【HDRP和URP的内置函数】
+    如果启用摄像机相对渲染（Camera-relative rendering）：返回 float3(0, 0, 0)。
+    如果禁用摄像机相对渲染：返回传入的位置，不做任何修改。
+}
 */
+float LoadCameraDepth(uint2 pixelCoords)
+{
+    /*
+    【HDRP的内置函数】
+    */
+    //LOAD_TEXTURE2D_X_LOD是com.unity.render-pipelines.core的内置函数
+    return LOAD_TEXTURE2D_X_LOD(_CameraDepthTexture, pixelCoords, 0).r;
+}
+// ASE
+float3 InvertDepthDirHD(float3 In)
+{
+	float3 result = In;
+	#if !defined(ASE_SRP_VERSION) || ASE_SRP_VERSION <= 70301 || ASE_SRP_VERSION == 70503 || ASE_SRP_VERSION >= 80301
+		result *= float3(1, 1, -1);
+	#endif
+	return result;
+}
+//float4x4 unity_CameraProjection;
+//float4x4 unity_CameraInvProjection;
+//float4x4 unity_WorldToCamera;
+//float4x4 unity_CameraToWorld;
+// ASE
+float3 GetWorldPosFromDepthBuffer(float2 clipPos01, float cameraDepth)
+{
+	#ifdef UNITY_REVERSED_Z
+		float depth = (1.0 - cameraDepth);
+	#else
+		float depth = cameraDepth;
+	#endif
+	float3 screenPos_DepthBuffer = (float3(clipPos01, depth));
+	float4 clipPos = (float4((screenPos_DepthBuffer * 2.0 - 1.0), 1.0));
+	float4 viewPos = mul(unity_CameraInvProjection, clipPos);
+	float3 viewPosNorm = viewPos.xyz / viewPos.w;
+	float3 localInvertDepthDirHD = InvertDepthDirHD(viewPosNorm);
+	
+	return mul(unity_CameraToWorld, float4(localInvertDepthDirHD, 1.0)).xyz;
+}
+float3 GetSSRimLight(float3 color, ToonLightingData lightingData, float3 lightDirWS, half shadowValue)
+{
+    UNITY_BRANCH //在条件语句之前添加此宏，告知编译器应将其编译为实际分支。在 HLSL 平台上扩展为 [branch]。
+    if (!_EnableSSRim) return 0;
+
+    float2 uv = lightingData.uv;
+    float3 normalDirWS = lightingData.normalWS;
+
+    half4 mask = tex2D(_SSRimMask, uv);
+    half widthRamp = 1; // TODO
+	//half widthRamp = SampleRampSignalLine(_SSRimWidthRamp, distance(posInput.positionWS, GetCameraRelativePositionWS(_WorldSpaceCameraPos)) / _SSRimRampMaxDistance).r;
+
+    float2 L_VS = normalize(mul((float3x3)UNITY_MATRIX_V, lightDirWS).xy) * (_SSRimInvertLightDir ? -1 : 1); //翻转
+    float2 N_VS = normalize(mul((float3x3)UNITY_MATRIX_V, normalDirWS).xy);
+    float NdotL = saturate(dot(N_VS, L_VS) + _SSRimLength); //_SSRimLength可以让最终的边缘光区域扩大
+    float scale = mask.r * widthRamp * NdotL * _SSRimWidth * GetScaleWithHight(); //_SSRimWidth其实是控制控制偏移距离的，视觉效果约等于控制rimLight宽度
+    // 原理：取屏幕空间当前像素坐标UV，向N_VS方向偏移后采样深度，与当前像素深度进行比较，深度差大于某一阈值则为边缘。
+    float2 ssUV1 = clamp(lightingData.positionSS + N_VS * scale, 0, _ScreenParams.xy - 1); //scale控制偏移距离
+    float viewDepth = distance(lightingData.positionWS, GetCameraRelativePositionWS(_WorldSpaceCameraPos));
+
+    float3 sceneWorldPos = GetWorldPosFromDepthBuffer(ssUV1 * _ScreenSize.zw, LoadCameraDepth(ssUV1));
+	float sceneViewDepth = distance(GetCameraRelativePositionWS(sceneWorldPos), GetCameraRelativePositionWS(_WorldSpaceCameraPos));
+
+	float intensity = smoothstep(viewDepth, viewDepth + _SSRimFeather, sceneViewDepth); //强度=0~1，羽化（深度差的阈值）：_SSRimFeather范围=0~2，越小羽化越强 //【注意】由于是smoothstep平滑过渡，可能导致非边缘也会变亮
+	intensity *= mask.a * lerp(1, _SSRimInShadow, shadowValue) * _SSRimIntensity; //mask //在阴影中减弱边缘光
+	
+	return _SSRimColor * intensity * lerp(1, color, _SSRimColor.a); //边缘光直接加在原color上 //A通道指示混合diffuse颜色的程度（=0时，...）
+}
+
+//【JTRP】屏幕空间深度边缘光 Screen Space Depth Rimlight
+// =======================================================================================================
 
 // 原版
-half3 ShadeEmissionAndRim_v1(ToonSurfaceData surfaceData, ToonLightingData lightingData)
+half3 ShadeEmission_v1(ToonSurfaceData surfaceData, ToonLightingData lightingData)
 {
     half3 emissionResult = lerp(surfaceData.emission, surfaceData.emission * surfaceData.albedo, _EmissionMulByBaseColor); // optional mul albedo // 控制自发光颜色乘上albedo颜色（Base颜色）的程度
     return emissionResult;
 }
-// 改进版（新增rimLight 并归到计算emission项的函数里）
-half3 ShadeEmissionAndRim_v2(ToonSurfaceData surfaceData, ToonLightingData lightingData, Light light, bool isAdditionalLight)
+// 改进版
+half3 ShadeEmission_v2(ToonSurfaceData surfaceData, ToonLightingData lightingData, bool isAdditionalLight)
 {
-    // ====== Rim Light ======
+    // 如果没有启用Emission，则surfaceData.emission = 0
+    // 有2种Emission，原神式和非原神式，见GetFinalEmissionColor()函数
+    half3 emissionResult = surfaceData.emission;
+    emissionResult = _isGenshinEmission ? emissionResult : lerp(emissionResult, emissionResult * surfaceData.albedo, _EmissionMulByBaseColor); // 非原神式，控制自发光颜色乘上albedo颜色（Base颜色）的程度
+
+    return emissionResult;
+}
+half3 ShadeEmission(ToonSurfaceData surfaceData, ToonLightingData lightingData)
+{
+    return ShadeEmission_v2(surfaceData, lightingData, false); 
+}
+
+// 普通的边缘光
+half3 ShadeRimLight(ToonSurfaceData surfaceData, ToonLightingData lightingData, Light light, bool isAdditionalLight)
+{
+	UNITY_BRANCH
+	if (!_UseRimLight) return 0;
+
     half3 N = lightingData.normalWS;
     half3 V = lightingData.viewDirectionWS;
 	half3 L = light.direction;
 
     half NdotL = dot(N, L);
     half NdotV = dot(N, V);
-    half VdotL = dot(V, L);
+    //half VdotL = dot(V, L);
     half halfLambert = NdotL * 0.5 + 0.5;
     
 	half useRimLight = surfaceData._useRimLight;
@@ -514,23 +607,9 @@ half3 ShadeEmissionAndRim_v2(ToonSurfaceData surfaceData, ToonLightingData light
     //// 方法三：真·菲涅尔边缘光（为啥没效果）
     //half3 rimLight = Fresnel_RimLight(NdotV, VdotL, rimColor.rgb);
     
-    rimLight = useRimLight ? rimLight : 0;
     rimLight = lerp(rimLight, rimLight * surfaceData.albedo, _RimMulByBaseColor); // 控制边缘光颜色乘上albedo颜色（Base颜色）的程度
-    // ====== End of Rim Light ======
-    
-    // ====== Emission ======
-    // 如果没有启用Emission，则surfaceData.emission = 0
-    // 有2种Emission，原神式和非原神式，见GetFinalEmissionColor()函数
-    half3 emissionResult = surfaceData.emission;
-    emissionResult = _isGenshinEmission ? emissionResult : lerp(emissionResult, emissionResult * surfaceData.albedo, _EmissionMulByBaseColor); // 非原神式，控制自发光颜色乘上albedo颜色（Base颜色）的程度
-    // ====== End of Emission ======
 
-    half3 emissionAndRim = emissionResult + rimLight;
-    return emissionAndRim;
-}
-half3 ShadeEmissionAndRim(ToonSurfaceData surfaceData, ToonLightingData lightingData, Light light)
-{
-    return ShadeEmissionAndRim_v2(surfaceData, lightingData, light, false); 
+    return rimLight;
 }
 
 // 原版
@@ -548,7 +627,7 @@ half3 CompositeAllLightResultsDefault(half3 indirectResult, half3 mainLightResul
     return surfaceData.albedo * indirectDirectLightSum  + emissionResult; // ***注意上面计算颜色的时候除了“自发光项”都没有乘albedo，在这里乘albedo(Base) Color，并加上自发光项
 }
 // 改进版
-half3 CompositeAllLightResults(half3 indirectResult, half3 mainLightResult, half3 additionalLightSumResult, half3 emissionAndRimResult, half3 faceShadowMask, ToonSurfaceData surfaceData, ToonLightingData lightingData)
+half3 CompositeAllLightResults(half3 indirectResult, half3 mainLightResult, half3 additionalLightSumResult, half3 emissionResult, half3 rimlightResult, half3 faceShadowMask, ToonSurfaceData surfaceData, ToonLightingData lightingData, Light light, half shadowValue)
 {
     // Legacy method;
 	/*half3 shadowColor = lerp(2*surfaceData._shadowColor, 1, faceShadowMask);
@@ -564,14 +643,24 @@ half3 CompositeAllLightResults(half3 indirectResult, half3 mainLightResult, half
     // 间接光照结果 * shadowColor 进行阴影修正
     // 直接光照的暗部呢？？？？？ 不修正？？？？？  
     
-    half3 indirectDirectLightSum  = indirectResult * shadowColor + mainLightResult + additionalLightSumResult;  // 间接+直接 //TODO:感觉脸部阴影还是不太对
+    half3 indirectDirectLightSum = indirectResult * shadowColor + mainLightResult + additionalLightSumResult;  // 间接+直接 //TODO:感觉脸部阴影还是不太对
 
     //Noirc的处理:
     //half lightLuminance = Luminance(indirectDirectLightSum );
     //half3 finalLightMulResult = indirectDirectLightSum  / max(1,lightLuminance / max(1,log(lightLuminance))); // allow controlled over bright using log | 在这里控制过亮 ？？？
     //return surfaceData.albedo * finalLightMulResult + emissionResult;
+    
+    // Screen Space rimLight | SS边缘光
+    // TODO：改进lightDirWS
+    half3 lightDirWS = -light.direction; // light.direction = _MainLightPosition.xyz; (mainLight)
+    // TODO：改进shadowValue // 0表示完全不在阴影中，1表示完全在阴影中
+    half3 SSRimLight = GetSSRimLight(indirectDirectLightSum, lightingData, lightDirWS, shadowValue);
+    //half3 SSRimLight = GetSSRimLight(surfaceData.albedo, lightingData, lightDirWS, shadowValue);
+    
+    half3 finalColor = indirectDirectLightSum + emissionResult + rimlightResult + SSRimLight;
+    //half3 finalColor = indirectDirectLightSum + emissionResult + rimlightResult;
 
-    return indirectDirectLightSum  + emissionAndRimResult;
+    return finalColor;
 }
 
 half3 ShadeFaceShadow(ToonSurfaceData surfaceData, ToonLightingData lightingData, Light light)

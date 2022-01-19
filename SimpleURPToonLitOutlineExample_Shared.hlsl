@@ -67,6 +67,7 @@ struct Varyings
     float4 positionWSAndFogFactor   : TEXCOORD1; // xyz: positionWS, w: vertex fog factor
     half3 normalWS                  : TEXCOORD2;
     float4 positionCS               : SV_POSITION;
+    float4 screenPos                : TEXCOORD3; // for SSRimlight //x,y·ÖÁ¿µÄ·¶Î§Îª[0,w]£¬¶ø²»ÊÇ[0,width]£¬[0,height]
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////
@@ -84,6 +85,10 @@ sampler2D _FaceLightMap;
 sampler2D _LightMap;
 sampler2D _MetalMap;
 sampler2D _MaskMap;
+sampler2D _SSRimWidthRamp;
+sampler2D _SSRimMask;
+//sampler2D _CameraDepthTexture;
+Texture2D _CameraDepthTexture; //£¿
 
 // put all your uniforms(usually things inside .shader file's properties{}) inside this CBUFFER, in order to make SRP batcher compatible
 // | ½«ËùÓÐuniform£¨Í¨³£ÊÇ.shaderÎÄ¼þµÄproperties{}ÖÐµÄÄÚÈÝ£©·ÅÔÚ´Ë CBUFFER£¨Ç¿µ÷ÏÂÊÇ¡°per material¡±µÄcbuffer£© ÖÐ£¬ÒÔÊ¹SRPÅú´¦ÀíÆ÷£¨SRP batcher£©¼æÈÝ
@@ -155,6 +160,17 @@ CBUFFER_START(UnityPerMaterial)
     half _RimIntensity;
     half _RimMulByBaseColor;
 
+    // screen space rimlight
+    uniform half _EnableSSRim;
+    uniform half _SSRimIntensity;
+    uniform half4 _SSRimColor;
+    uniform half _SSRimWidth;
+    uniform half _SSRimRampMaxDistance;
+    uniform half _SSRimLength;
+    uniform half _SSRimInvertLightDir;
+    uniform float _SSRimFeather;
+    uniform half _SSRimInShadow;
+
     // shadow mapping
     half    _ReceiveShadowMappingAmount;
     float   _ReceiveShadowMappingPosOffset;
@@ -208,6 +224,8 @@ struct ToonLightingData
     float3  positionWS;
     half3   viewDirectionWS;
     float4  shadowCoord;
+    float2  positionSS; // Screen space pixel coordinates //·¶Î§[0,width]ºÍ[0,height]
+    float2  uv;
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////
@@ -278,7 +296,7 @@ Varyings VertexShaderWork(Attributes input)
     output.positionWSAndFogFactor = float4(positionWS, fogFactor);
     output.normalWS = vertexNormalInput.normalWS; //normlaized already by GetVertexNormalInputs(...) | Í¨¹ý GetVertexNormalInputs(...) ¹éÒ»»¯
 
-    output.positionCS = TransformWorldToHClip(positionWS);
+    output.positionCS = TransformWorldToHClip(positionWS); //VP±ä»»
 
 #ifdef ToonShaderIsOutline
     // ***×Ü½á£ºZOffset·½·¨£¬ÈÃ²Ã¼ô¿Õ¼äµÄZÖµÑØ×ÅÉãÏñ»úµÄZÆ«ÒÆ£¬³£ÓÃÓÚÒþ²ØÃæ²¿/ÑÛ¾¦ÉÏµÄÄÑ¿´µÄoutline¡£
@@ -336,7 +354,9 @@ Varyings VertexShaderWork(Attributes input)
     #endif
     output.positionCS = positionCS;
 #endif
-    //--------------------------------------------------------------------------------------    
+    //--------------------------------------------------------------------------------------
+    
+    output.screenPos = ComputeScreenPos(output.positionCS);  // for SSRimlight //x,y·ÖÁ¿µÄ·¶Î§Îª[0,w]£¬¶ø²»ÊÇ[0,width]£¬[0,height]
 
     return output;
 }
@@ -534,6 +554,8 @@ ToonLightingData InitializeLightingData(Varyings input) // ³õÊ¼»¯ lightingData ½
     lightingData.positionWS = input.positionWSAndFogFactor.xyz;
     lightingData.viewDirectionWS = SafeNormalize(GetCameraPositionWS() - lightingData.positionWS); //SafeNormalize±ÜÃâ¹éÒ»»¯¼ÆËã¹ý³ÌÖÐ³ýÒÔ0  
     lightingData.normalWS = normalize(input.normalWS); //interpolated normal is NOT unit vector, we need to normalize it | ²åÖµ·¨Ïß²»ÊÇµ¥Î»ÏòÁ¿£¬ÎÒÃÇÐèÒª¶ÔÆä½øÐÐ¹éÒ»»¯
+    lightingData.positionSS = input.screenPos.xy / input.screenPos.w * _ScreenParams.xy; //´Ó[0,w]Ó³Éäµ½[0,width]ºÍ[0,height]
+    lightingData.uv = input.uv;
 
     return lightingData;
 }
@@ -666,6 +688,9 @@ half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
 
     // Main light | Ö÷¹âÔ´
     half3 mainLightResult = ShadeSingleLight(surfaceData, lightingData, mainLight, false);
+    //half4 mainLight_and_litOrShadowArea = ShadeSingleLight(surfaceData, lightingData, mainLight, false);
+    //half3 mainLightResult = mainLight_and_litOrShadowArea.rgb;
+    //half mainLight_litOrShadowArea = mainLight_and_litOrShadowArea.a;
     // Face Shadow Mask
     // faceShadowMaskÖ»ÓÐ2ÖÖ·µ»ØÖµ£º0=(0,0,0)»ò1=(1,1,1)
     half3 faceShadowMask = ShadeFaceShadow(surfaceData, lightingData, mainLight);
@@ -711,18 +736,26 @@ half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
 
         // Different function used to shade additional lights.
         additionalLightSumResult += ShadeSingleLight(surfaceData, lightingData, light, true);
+        //half4 additionalLight_and_litOrShadowArea = ShadeSingleLight(surfaceData, lightingData, light, true);
+        //additionalLightSumResult += additionalLight_and_litOrShadowArea.rgb;
+        ////(half)  additionalLight_litOrShadowArea += additionalLight_and_litOrShadowArea.a; //Î´Ê¹ÓÃ
     }
 #endif
 
     //==============================================================================================
-    // emission + rimLight | ×Ô·¢¹â + ±ßÔµ¹â
-    //half3 emissionResult = ShadeEmission(surfaceData, lightingData); //Ô­°æ
-    half3 emissionRimLightResult = ShadeEmissionAndRim(surfaceData, lightingData, mainLight); //¸Ä½ø
+    // emission | ×Ô·¢¹â
+    half3 emissionResult = ShadeEmission(surfaceData, lightingData);
     
     //==============================================================================================
-    // ºÏ³É£º¼ä½Ó¹âÕÕ + Ö÷¹âÕÕ + ËùÓÐ¶îÍâ¹âÕÕ + ×Ô·¢¹â
-    //return CompositeAllLightResults(indirectResult, mainLightResult, additionalLightSumResult, emissionRimLightResult, surfaceData, lightingData); //Ô­°æ
-    return CompositeAllLightResults(indirectResult, mainLightResult, additionalLightSumResult, emissionRimLightResult, faceShadowMask, surfaceData, lightingData); //¸Ä½ø
+    // rimLight | ÆÕÍ¨±ßÔµ¹â£¨SS±ßÔµ¹âÔÚCompositeAllLightResultsÖÐ¼ÆËã£©
+    half3 rimlightResult = ShadeRimLight(surfaceData, lightingData, mainLight, false);
+
+    //==============================================================================================
+    // ºÏ³É£º¼ä½Ó¹âÕÕ + Ö÷¹âÕÕ + ËùÓÐ¶îÍâ¹âÕÕ + ×Ô·¢¹â + ÆÕÍ¨±ßÔµ¹â
+    // TODO£º¸Ä½øshadowValue // 0±íÊ¾ÍêÈ«²»ÔÚÒõÓ°ÖÐ£¬1±íÊ¾ÍêÈ«ÔÚÒõÓ°ÖÐ
+    //half shadowValue = 1 - mainLight_litOrShadowArea;
+    half shadowValue = 0;
+    return CompositeAllLightResults(indirectResult, mainLightResult, additionalLightSumResult, emissionResult, rimlightResult, faceShadowMask, surfaceData, lightingData, mainLight, shadowValue);
 }
 
 // ±íÃæµÄÑÕÉ«×ª»»³ÉoutlineµÄÑÕÉ«
@@ -756,6 +789,8 @@ half4 ShadeFinalColor(Varyings input) : SV_TARGET
 
 #ifdef ToonShaderIsOutline
     color = ConvertSurfaceColorToOutlineColor(color); // Èç¹ûÊÇoutline£¬ÐèÒª°Ñ±íÃæµÄÑÕÉ«×ª»»³ÉoutlineµÄÑÕÉ«
+#else 
+    color = 1;
 #endif
 
     // ÕâÊÇÊ¹ÓÃµÄÊÇ×Ô¶¨ÒåµÄApplyFogº¯Êý£¬·ÇÄÚÖÃº¯Êý
