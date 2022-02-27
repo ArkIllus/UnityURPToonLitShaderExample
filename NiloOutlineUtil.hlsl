@@ -16,13 +16,13 @@ float GetCameraFOV()
     float fov = atan(1.0f / t) * 2.0 * Rad2Deg;
     return fov; //返回值是角度制的fovY
 }
+
 float ApplyOutlineDistanceFadeOut(float inputMulFix)
 {
     //make outline "fadeout" if character is too small in camera's view
-    // | 如果角色在相机视图中太小，则使outline“淡出”
-    // inputMulFix > 0 所以其实就是限制 inputMulFix > 1 时的上限 = 1，对应该顶点到相机的距离超过1m的情况
-    return saturate(inputMulFix);
+    return saturate(inputMulFix); // 对应该顶点到相机的距离超过1m的情况
 }
+
 float GetOutlineCameraFovAndDistanceFixMultiplier(float positionVS_Z)
 {
     //返回一个世界空间下的顶点外扩的修正系数
@@ -42,21 +42,16 @@ float GetOutlineCameraFovAndDistanceFixMultiplier(float positionVS_Z)
         // Perspective camera case | 相机使用透视投影
         ////////////////////////////////
 
-        // keep outline similar width on screen accoss all camera distance 
-        // | 对所有相机距离，在屏幕上保持outline宽度相似 
-        // ***主要是为了避免相机太近时，outline太粗
-        //（观察/相机空间中顶点位置的z坐标）（unity中摄像机的前方是-z轴）（unity中观察空间使用的是右手坐标系，模型空间和世界空间使用的是左手坐标系）
+        // keep outline similar width on screen accoss all camera distance
+        // ***主要是为了避免相机太近时，outline太粗***
         cameraMulFix = abs(positionVS_Z);
 
         // can replace to a tonemap function if a smooth stop is needed
-        // | 如果需要平滑停止（smooth stop），可以替换为色调映射（tonemap）函数 ？？？？？？
-        // ***主要是为了避免相机太远时，由于经过了上面的修正，outline太粗
+        // ***主要是为了避免相机太远时，由于经过了上面的修正，outline太粗***
         cameraMulFix = ApplyOutlineDistanceFadeOut(cameraMulFix);
 
         // keep outline similar width on screen accoss all camera fov
-        // | 对所有相机FOV，在屏幕上保持outline宽度相似 
-        // 使用角度制的fovY进行修正
-        cameraMulFix *= GetCameraFOV();       
+        cameraMulFix *= GetCameraFOV(); // 使用角度制的fovY进行修正
     }
     else
     {

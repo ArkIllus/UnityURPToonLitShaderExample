@@ -12,13 +12,10 @@
 #define SimpleURPToonLitOutlineExample_LightingEquation_Include
 
 // 原神式高光 Blinn-Phong Specular
-// 参考：Samlee
 // TODO: [头发]lightMap的R通道没用上
 // TODO: （改为游戏里的一/二级阴影）
 half3 NPR_Specular(float3 NdotH, float4 lightMap)
 {
-    // 这里不×albedoColor，在ShadeSingleLight里×；不×saturate(light.color)，在ShadeSingleLight里×；目前不×rampColor
-
     // [身体(衣服)]lightMap的通道：
     // R: Glossiness（金属区域）
     // G: Specular（高光区域）
@@ -31,36 +28,27 @@ half3 NPR_Specular(float3 NdotH, float4 lightMap)
     // B: 阴影权重（固定阴影）
     // A: 头发和配饰区域（白色=头发 浅灰=配饰）
 
-    float3 SpecularColor = lightMap.g; //相当于该区域的高光强度
+    float3 SpecularColor = lightMap.g;
 
-    float SpecularRadius = _IsHair ? pow(max(0, NdotH), lightMap.a * 50) : pow(max(0, NdotH), lightMap.r * 50); // TODO: 要不要开放50这个参数
-    // 解析：对于身体(衣服)，使用金属性通道作为指数，这很合理
+    float SpecularRadius = _IsHair ? pow(max(0, NdotH), lightMap.a * 50) : pow(max(0, NdotH), lightMap.r * 50);
+    // 对于身体(衣服)，使用金属性通道作为指数
     // 对于头发，使用头发和配饰区域（白色=头发）通道作为指数，这合理吗？
-    
-    //return smoothstep(0.3, 0.5, SpecularRadius) * SpecularColor * lightMap.g; //偏NPR
 
-    // Samlee:
     return _IsHair ? smoothstep(0.3, 0.5, SpecularRadius) * SpecularColor * lerp(_HairSpecularStrength, 1, step(0.9, lightMap.g)) : //对于头发，使用一个参数额外控制其高光强度
                      smoothstep(0.3, 0.5, SpecularRadius) * SpecularColor * lightMap.g; //0.3, 0.5 偏NPR
-
-    // 解析：smoothstep 会让高光更加的二值化（0-1化/赛璐璐化/卡通化）
-    // 如果不用smoothstep或smoothstep(0, 1, x)那么更加自然真实、平滑过渡
-    // 乘lightMap.g的平方，高光会比lightMap.g更暗
     // e.g.: [身体(衣服)]部分
-    // return smoothstep(0.3, 0.4, SpecularRadius) * SpecularColor * lightMap.g; //偏NPR
-    // return smoothstep(0.3, 0.5, SpecularRadius) * SpecularColor * lightMap.g; //偏NPR
     // return smoothstep(0, 1, SpecularRadius) * SpecularColor * lightMap.g; //偏PBR
 }
 
 // 头发区域除了NPR_Specular，还需要额外的高光（因为[头发]lightMap的G通道里大部分头发区域都是纯黑的，这部分在NPR_Specular里没有高光） // 如果不是_IsHair，返回0
-// 参考：世界 这个效果是额外的高光集中在中间，两边是暗的，我觉得非常不科学
+// TODO：这个效果是额外的高光集中在中间，两边是暗的，不科学
 half3 NPR_Hair_Additional_Specular_v1(float3 normalWS, float3 NdotL, float4 lightMap)
 {
-    float HariSpecRadius = 0.25;//控制头发的反射范围
+    float HariSpecRadius = 0.25; //控制头发的反射范围
     float3 normalVS = normalize(mul(UNITY_MATRIX_V,normalWS));
-    float HariSpecDir = normalVS * 0.5 + 0.5; // 映射到[0, 1] ？？？
+    float HariSpecDir = normalVS * 0.5 + 0.5; // 映射到[0, 1] 
     float3 HariSpecular = smoothstep(HariSpecRadius, HariSpecRadius + 0.1, 1 - HariSpecDir) 
-                        * smoothstep(HariSpecRadius, HariSpecRadius + 0.1, HariSpecDir) * NdotL; // ？？？？？
+                        * smoothstep(HariSpecRadius, HariSpecRadius + 0.1, HariSpecDir) * NdotL;
     return _IsHair ? HariSpecular * _HairSpecularStrength * lightMap.b * step(lightMap.r, 0.1) * 1.0 : 0; //B通道指示头发的阴影区域不该有高光 //step(lightMap.r, 0.1)：[头发]lightMap的R通道<0.1为头发区域，即排除[头发]lightMap中的配饰区域
 }
 
@@ -71,12 +59,9 @@ half3 NPR_Hair_Additional_Specular_v1(float3 normalWS, float3 NdotL, float4 ligh
 //}
 
 // 原神式金属高光 Glossiness
-// 参考：Samlee
 // TODO: 改进，不用normalVS采样金属贴图
 half3 NPR_MetalSpecular(float3 normalWS, float4 lightMap)
 {
-    // 这里不×albedoColor，在ShadeSingleLight里×；不×saturate(light.color)，在ShadeSingleLight里×；目前不×rampColor
-
     // [身体(衣服)]lightMap的通道：
     // R: Glossiness（金属区域）
     // G: Specular（高光区域）
@@ -91,7 +76,7 @@ half3 NPR_MetalSpecular(float3 normalWS, float4 lightMap)
 
     float3 normalVS = normalize(mul(UNITY_MATRIX_V, normalWS));
     
-    float MetalMap = tex2D(_MetalMap, normalVS * 0.5 + 0.5) * 2;  //使用normalVS采样金属贴图 为啥呢？8太懂。 //这个效果是金属高光集中在中间，两边是暗的，是不是有点不科学？
+    float MetalMap = tex2D(_MetalMap, normalVS * 0.5 + 0.5) * 2;  //使用normalVS采样金属贴图
     
     //return step(0.95, MetalMap) * lightMap.r; // 这样的话只有金属性最强的那部分有金属高光
     half3 metalSpecular = MetalMap * lightMap.r * _MetalColor;
@@ -100,7 +85,6 @@ half3 NPR_MetalSpecular(float3 normalWS, float4 lightMap)
 }
 
 // 采样原神式Ramp贴图
-// 参考：Samplee、世界
 // TODO: 梯度漫反射效果
 half3 NPR_Ramp(half NdotL, half _InNight, float4 lightMap) 
 {
@@ -120,9 +104,7 @@ half3 NPR_Ramp(half NdotL, half _InNight, float4 lightMap)
     return _InNight ? tex2D(_RampMap, (halfLambert, lightMap.a * 0.45)).rgb : tex2D(_RampMap, (halfLambert, lightMap.a * 0.45 + 0.55)).rgb; // Ramp贴图的上半部分是白天，下半部分是晚上
 }
 
-// 用于初始化faceShadowMask，【作为直接光照、间接光照的乘数产生脸部阴影】，返回值是0或1。
-// ***注意***：对于非脸部，返回值是1。
-// 版本1：参考Noirc
+// 用于初始化faceShadowMask，【作为直接光照、间接光照的乘数产生脸部阴影】，返回值是0或1。***注意***：对于非脸部，返回值是1。
 // TODO：抗锯齿
 half CustomFaceShade_v1(ToonSurfaceData surfaceData, ToonLightingData lightingData, Light light, bool isAdditionalLight) // isAdditionalLight目前没用上
 {
@@ -142,7 +124,7 @@ half CustomFaceShade_v1(ToonSurfaceData surfaceData, ToonLightingData lightingDa
     float RightLight = dot(normalize(Right.xz), normalize(L.xz));
     float FrontLight = dot(normalize(Front.xz), normalize(L.xz));
 
-    // 阴影覆盖修复可实现更平滑的过渡 -> https://zhuanlan.zhihu.com/p/279334552;  // ？
+    // 阴影覆盖修复可实现更平滑的过渡 -> https://zhuanlan.zhihu.com/p/279334552;
     // Light从角色前面入射时，RightLight从[0,pi]映射到[-1,1]
     // Light从角色后面入射时，RightLight从[pi,2pi]映射到[1,-1]
     RightLight = -(acos(RightLight) / 3.14159265 - 0.5) * 2;
@@ -152,30 +134,26 @@ half CustomFaceShade_v1(ToonSurfaceData surfaceData, ToonLightingData lightingDa
     float LightMap = RightLight > 0 ? surfaceData._faceLightMapR.r : surfaceData._facelightMapL.r;
 
     // dirThreshold控制随着光线入射方向的变化，脸部阴影滚动的速度；
-    // 值越高=面朝灯光时阴影滚动越快，而背向灯光时阴影滚动越慢；值越低=相反； // ？
-    // TODO:要不要在面板里开放这个参数呢
+    // 值越高=面朝灯光时阴影滚动越快，而背向灯光时阴影滚动越慢；值越低=相反；
     float dirThreshold = 0.1;
 
     // 如果Light从角色前面入射时，请使用RightLight方向和dirThreshold。
-    // 如果Light从角色后面入射时，请使用FrontLight方向和（1-dirThreshold）和相应的平移...   // ？？？？？？？？？？
+    // 如果Light从角色后面入射时，请使用FrontLight方向和（1-dirThreshold）和相应的平移...
     // ...以确保180度时的平滑过渡（其中前归一化灯光方向==0）。
     float lightAttenuation_temp = (FrontLight > 0) ? 
         min((LightMap > dirThreshold * RightLight), (LightMap > dirThreshold * -RightLight)) : //解释：光从右半脸入射时，RightLight<0，所以相当于LightMap > dirThreshold * -RightLight；
                                                                                                //光从左半脸入射时，RightLight>0，所以相当于LightMap > dirThreshold * RightLight。其实就是用min替换if语句
         min((LightMap > (1 - dirThreshold * 2) * FrontLight - dirThreshold), (LightMap > (1 - dirThreshold * 2) * -FrontLight + dirThreshold));
 
-    // 改进：用smoothstep在[0,1]之间平滑过渡以避免面部阴影分界线的锯齿(然而效果不好。。。)
-    // TODO：抗锯齿
+    // 用smoothstep在[0,1]之间平滑过渡以避免面部阴影分界线的锯齿(然而效果不好。。。)
     //float lightAttenuation_temp = (FrontLight > 0) ? 
     //    min(smoothstep(dirThreshold * RightLight - _FaceShadowRangeSmooth, dirThreshold * RightLight + _FaceShadowRangeSmooth, LightMap), 
     //        smoothstep(dirThreshold * -RightLight - _FaceShadowRangeSmooth, dirThreshold * -RightLight + _FaceShadowRangeSmooth, LightMap)) : // Light从角色前面入射时，RightLight从[0,pi]映射到[-1,1]
     //    min(smoothstep( (1 - dirThreshold * 2) * FrontLight - dirThreshold - _FaceShadowRangeSmooth, (1 - dirThreshold * 2) * FrontLight - dirThreshold + _FaceShadowRangeSmooth, LightMap), 
     //        smoothstep( (1 - dirThreshold * 2) * -FrontLight + dirThreshold - _FaceShadowRangeSmooth, (1 - dirThreshold * 2) * -FrontLight + dirThreshold + _FaceShadowRangeSmooth, LightMap));
      
-    // [冗余]当背对光线时，补偿平移？
+    // [冗余]当背对光线时，补偿平移
 	//lightAttenuation_temp += (FrontLight < -0.9) ? (min((LightMap > 1 * FrontLight), (LightMap > 1 * -FrontLight))) : 0;
-
-    // 没有Ramp, Night，或者说Ramp=1
 
     half lightAttenuation = surfaceData._useFaceLightMap ? lightAttenuation_temp : 1;
 
@@ -184,7 +162,7 @@ half CustomFaceShade_v1(ToonSurfaceData surfaceData, ToonLightingData lightingDa
 
 // 用于初始化faceShadowMask，【作为直接光照、间接光照的乘数产生脸部阴影】，返回值是0~1（0/1之间光滑过渡，尽量避免锯齿）。
 // ***注意***：对于非脸部，返回值是1。
-// 版本2：参考世界 (好像还有点问题)
+// 版本2
 half CustomFaceShade_v2(ToonSurfaceData surfaceData, ToonLightingData lightingData, Light light, bool isAdditionalLight)
 //float3 NPR_Function_face (float NdotL,float4 baseColor,float4 parameter,Light light,float Night)
 {
@@ -224,13 +202,7 @@ half3 ShadeGI(ToonSurfaceData surfaceData, ToonLightingData lightingData)
     // SH 234 (ignored)
     // SH 56789 (ignored)
     // we just want some average envi indirect color only
-    half3 averageSH = SampleSH(0); // 采样离网格最近的3个光照探针并插值？？？？？？
-    // 如果我们关闭了自动烘焙导致没有烘焙lightprobe，则采样结果是黑色； 
-    // 如果场景中没有probe，则使用光照设置中的环境probe，通常是Sky Box；
-    // 动态物体通过采样probe获得静态物体的间接光贡献； probe中的记录了probe位置处多个角度采样的颜色，保存为SH系数； 
-    // 采样probe的过程中通过SH系数快速计算出采样结果，相比Cubemap贴图来说节约性能。 
-    // probe仅作为保存颜色的方式，而这些颜色都是通过RayTracing离线计算的，不能实时变化。
-    // probe中也无法判断物体距离，无法提供阴影。
+    half3 averageSH = SampleSH(0); 
 
     // can prevent result becomes completely black if lightprobe was not baked | 防止lightprobe没有被烘焙时完全变黑
     //averageSH = max(_IndirectLightMinColor,averageSH);
@@ -253,9 +225,8 @@ half3 ShadeGI(ToonSurfaceData surfaceData, ToonLightingData lightingData)
 
 // Most important part: lighting equation, edit it according to your needs, write whatever you want here, be creative!
 // This function will be used by all direct lights (directional/point/spot) 
-// 版本1参考：Colin
-// | 最重要的函数。这个函数会被所有类型的光源使用（平行光/点光源/聚光灯）（主光源 + 额外光源）
-// TODO：似乎只有漫反射项。缺少高光反射项。也可以考虑往_Metallic等PBR的方向做。
+// 版本1
+// TODO：只有漫反射项，缺少高光反射项。也可以考虑往_Metallic等PBR的方向做。
 half3 ShadeSingleLight_v1(ToonSurfaceData surfaceData, ToonLightingData lightingData, Light light, bool isAdditionalLight)
 {
     half3 N = lightingData.normalWS;
@@ -266,21 +237,15 @@ half3 ShadeSingleLight_v1(ToonSurfaceData surfaceData, ToonLightingData lighting
     half NoL = dot(N,L);
     half NoH = dot(N,H);
 
-    half lightAttenuation = 1; //根本没用啊
-    // 参考Noirc:
-	// Replace original initialization of lightAttenuation with custom face shading result;
-    //half lightAttenuation = CustomFaceShade(surfaceData, lightingData, light, isAdditionalLight);
-     //其实就是用faceShadowMask代替lightAttenuation，可是这个效果，脸的阴影就完全变黑了啊。。。
+    half lightAttenuation = 1; //未使用
 
     // light's distance & angle fade for point light & spot light (see GetAdditionalPerObjectLight(...) in Lighting.hlsl)
-    // | 点光源和聚光灯的光照的距离&角度衰减（请参见Lighting.hlsl中的GetAdditionalPerObjectLight(...)）
     // Lighting.hlsl -> https://github.com/Unity-Technologies/Graphics/blob/master/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl
-    half distanceAttenuation = min(4,light.distanceAttenuation); //clamp to prevent light over bright if point/spot light too close to vertex 
-                                                                 // | 如果点光源/聚光灯离顶点太近，则取上限=4以防止光线过亮
+    half distanceAttenuation = min(4,light.distanceAttenuation); //clamp to prevent light over bright if point/spot light too close to vertex
 
     // simplest 1 line cel shade, you can always replace this line by your own method! | 最简单的1条边界线的暗部（亮部+暗部+使用smoothstep柔和过渡）
     // litOrShadowArea的范围为[0,1]
-    half litOrShadowArea = smoothstep(_CelShadeMidPoint-_CelShadeSoftness,_CelShadeMidPoint+_CelShadeSoftness, NoL); //smoothstep用来生成0到1的平滑过渡 //目前对于脸部，_CelShadeSoftness=0.5，以达到非常平滑的过渡
+    half litOrShadowArea = smoothstep(_CelShadeMidPoint-_CelShadeSoftness,_CelShadeMidPoint+_CelShadeSoftness, NoL); //目前对于脸部，_CelShadeSoftness=0.5，以达到非常平滑的过渡
 
     // occlusion
     // 使用_OcclusionDirectStrength在直接光照中控制遮挡的程度
@@ -290,17 +255,14 @@ half3 ShadeSingleLight_v1(ToonSurfaceData surfaceData, ToonLightingData lighting
     // 面部直接使用litOrShadowArea比较难看，所以使用lerp做一个从[0,1]到[0.5,1]的线性映射，相当于让脸部更亮一些。此时脸部的litOrShadowArea的范围为[0.5,1]
     litOrShadowArea = _IsFace ? lerp(0.5,1,litOrShadowArea) : litOrShadowArea;
 
-    // light's shadow map | 光照的shadow map，也就是阴影衰减，使用_ReceiveShadowMappingAmount控制应用阴影衰减的程度（=0时没有阴影？）
-    // *** 《入门精要》中，UNITY_LIGHT_ATTENUATION计算光照衰减和阴影值相乘的结果存储在atten中，将最终的color乘上atten值。
-    // *** 这里是shadowAttenuation作为一个乘数计算litOrShadowArea，再由litOrShadowArea计算litOrShadowColor。最终
+    // light's shadow map | 光照的shadow map，也就是阴影衰减，使用_ReceiveShadowMappingAmount控制应用阴影衰减的程度
     // shadowAttenuation值的范围为[0,1]
     litOrShadowArea *= lerp(1,light.shadowAttenuation,_ReceiveShadowMappingAmount);
 
-    half3 litOrShadowColor = lerp(_ShadowMapColor,1, litOrShadowArea); // 控制阴影的颜色，使用lerp做一个从[0,1]到[_ShadowMapColor,1]的线性映射，litOrShadowArea=0时，litOrShadowColor=_ShadowMapColor
+    half3 litOrShadowColor = lerp(_ShadowMapColor,1, litOrShadowArea); // 控制阴影的颜色
     
     // distanceAttenuation值的范围为[0,1]
     half3 lightAttenuationRGB = litOrShadowColor * distanceAttenuation; // 再×距离衰减（即光照衰减）
-    //half3 lightAttenuationRGB = litOrShadowColor * distanceAttenuation * lightAttenuation;// lightAttenuation = 1 没啥用啊
 
     // 采样Ramp贴图
     half3 rampColor = (1, 1, 1);
@@ -308,10 +270,6 @@ half3 ShadeSingleLight_v1(ToonSurfaceData surfaceData, ToonLightingData lighting
         rampColor = NPR_Ramp(NoL, _InNight, surfaceData._lightMap);
         rampColor = lerp(1, rampColor, _AlbedoMulByRampColor); //控制albedo颜色乘上ramp颜色的程度
     #endif
-
-    // saturate() light.color to prevent over bright | saturate(light.color)防止过亮（当光源的intensity设为超过1时，light.color的范围就超过1了）
-    // additional light reduce intensity since it is additive | 对于额外光源的光乘0.25，让它弱一些，但是为啥调整这个数感觉画面没变化？因为没有额外光源！
-    //return surfaceData.albedo * rampColor * saturate(light.color) * lightAttenuationRGB * (isAdditionalLight ? 0.25 : 1);
     
     half3 diffuse = surfaceData.albedo * rampColor * saturate(light.color) * lightAttenuationRGB * (isAdditionalLight ? 0.25 : 1);
     diffuse *= _UseLightMap ? (1 - surfaceData._lightMap.r) : 1; //有lightmap时，考虑到Blinn-Phong能量守恒，金属性越强的地方diffuse越暗
@@ -335,9 +293,8 @@ half3 ShadeSingleLight_v1(ToonSurfaceData surfaceData, ToonLightingData lighting
 
 // Most important part: lighting equation, edit it according to your needs, write whatever you want here, be creative!
 // This function will be used by all direct lights (directional/point/spot) 
-// 版本2参考：NoirRC
-// | 最重要的函数。这个函数会被所有类型的光源使用（平行光/点光源/聚光灯）（主光源 + 额外光源）
-// TODO：似乎只有漫反射项。缺少高光反射项。也可以考虑往_Metallic等PBR的方向做。
+// 版本2
+// TODO：只有漫反射项。缺少高光反射项。也可以考虑往_Metallic等PBR的方向做。
 half3 ShadeSingleLight_v2(ToonSurfaceData surfaceData, ToonLightingData lightingData, Light light, bool isAdditionalLight)
 {
     half3 N = lightingData.normalWS;
@@ -351,28 +308,20 @@ half3 ShadeSingleLight_v2(ToonSurfaceData surfaceData, ToonLightingData lighting
     //half lightAttenuation = 1;
     half lightAttenuation = CustomFaceShade(surfaceData, lightingData, light, isAdditionalLight);
 
-    // light's shadow map | 光照的shadow map，也就是阴影衰减，使用_ReceiveShadowMappingAmount控制应用阴影衰减的程度（=0时没有阴影衰减）
-    // *** 《入门精要》中，UNITY_LIGHT_ATTENUATION计算光照衰减和阴影值相乘的结果存储在atten中，将最终的color乘上atten值。
-    // *** 这里是shadowAttenuation作为一个乘数计算lightAttenuation
+    // light's shadow map | 光照的shadow map，也就是阴影衰减，使用_ReceiveShadowMappingAmount控制应用阴影衰减的程度
     // shadowAttenuation值的范围为[0,1]
     lightAttenuation *= lerp(1,light.shadowAttenuation,_ReceiveShadowMappingAmount);
 
     // light's distance & angle fade for point light & spot light (see GetAdditionalPerObjectLight(...) in Lighting.hlsl)
-    // | 点光源和聚光灯的光照的距离&角度衰减（请参见Lighting.hlsl中的GetAdditionalPerObjectLight(...)）
     // Lighting.hlsl -> https://github.com/Unity-Technologies/Graphics/blob/master/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl
-    half distanceAttenuation = min(4,light.distanceAttenuation); //clamp to prevent light over bright if point/spot light too close to vertex 
-                                                                 // | 如果点光源/聚光灯离顶点太近，则取上限=4以防止光线过亮
+    half distanceAttenuation = min(4,light.distanceAttenuation); //clamp to prevent light over bright if point/spot light too close to vertex
 
-    lightAttenuation *= distanceAttenuation; // 再乘 距离衰减（即光照衰减）// distanceAttenuation值的范围为[0,1]
+    lightAttenuation *= distanceAttenuation; // distanceAttenuation值的范围为[0,1]
 
     // N dot L
     // simplest 1 line cel shade, you can always replace this line by your own method! | 最简单的1条边界线的暗部（亮部+暗部+使用smoothstep柔和过渡）
     // cellitOrShadowArea的范围为[0,1]
-    half celLitOrShadowArea = smoothstep(_CelShadeMidPoint-_CelShadeSoftness,_CelShadeMidPoint+_CelShadeSoftness, NoL); //smoothstep用来生成0到1的平滑过渡
-    
-    // face ignore celshade since it is usually very ugly using NoL method
-    // 面部直接使用celLitOrShadowArea比较难看，所以使用lerp做一个从[0,1]到[0.5,1]的线性映射，相当于让脸部更亮一些。此时脸部的celLitOrShadowArea的范围为[0.5,1]
-    //celLitOrShadowArea = _IsFace ? lerp(0.5,1,litOrShadowArea) : litOrShadowArea;
+    half celLitOrShadowArea = smoothstep(_CelShadeMidPoint-_CelShadeSoftness,_CelShadeMidPoint+_CelShadeSoftness, NoL);
 
     // don't want direct lighting's cel shade effect looks too strong? set ignoreValue to a higher value | 控制忽略cel风格的明暗部的程度（比如可以让脸部更亮）
     // 目前默认_AdditionalLightIgnoreCelShade = 0.8，_MainLightIgnoreCelShade = 0
@@ -394,18 +343,9 @@ half3 ShadeSingleLight_v2(ToonSurfaceData surfaceData, ToonLightingData lighting
         rampColor = NPR_Ramp(NoL, _InNight, surfaceData._lightMap);
     #endif
 
-    //half3 litOrShadowColor = lerp(_ShadowMapColor,1, litOrShadowArea); // 控制阴影的颜色，使用lerp做一个从[0,1]到[_ShadowMapColor,1]的线性映射，litOrShadowArea=0时，litOrShadowColor=_ShadowMapColor
-    //
-    // 不再使用_ShadowMapColor控制阴影的颜色
-
-    // saturate() light.color to prevent over bright | saturate(light.color)防止过亮（当光源的intensity设为超过1时，light.color的范围就超过1了）
-    // additional light reduce intensity since it is additive | 对于额外光源的光乘0.25，让它弱一些，但是为啥调整这个数感觉画面没变化？因为没有额外光源！
-    //return saturate(light.color) * lightAttenuationRGB * (isAdditionalLight ? 0.25 : 1);
-    //
-    // 不再saturate(light.color)防止过亮（当光源的intensity设为超过1时）（在最后的CompositeAllLightResults时控制过亮），不再对于额外光源的光乘0.25让它弱一些
     return surfaceData.albedo * rampColor * light.color * lightAttenuation; 
 
-    // ***【注意】貌似需要和配合 CompositeAllLightResults中Luminance控制过亮 使用，否则脸上阴影都是很黑的，超级丑
+    // ***【注意】需要和配合CompositeAllLightResults中Luminance控制过亮使用，否则脸上阴影都是很黑的，超级丑
 }
 half3 ShadeSingleLight(ToonSurfaceData surfaceData, ToonLightingData lightingData, Light light, bool isAdditionalLight)
 {
@@ -419,31 +359,31 @@ half3 ShadeSingleLight(ToonSurfaceData surfaceData, ToonLightingData lightingDat
 // 边缘光计算函数
 ///////////////////////////////////////////////////////////////////////////////////////
 
-// 自称·菲涅尔边缘光（不是，这哪里菲涅尔了。。。） https://zhuanlan.zhihu.com/p/435005339
+// https://zhuanlan.zhihu.com/p/435005339
 // 感觉效果和原来差不多。。。
-float3 NPR_Base_RimLight(float NdotV,float halfLambert,float3 baseColor)
-{
-    //return (1 - smoothstep(_RimRadius,_RimRadius + 0.03,NdotV)) * _RimIntensity * (1 - halfLambert) * baseColor;
-    return (1 - smoothstep(_RimMin,_RimMin + 0.03, NdotV)) * _RimIntensity * (1 - halfLambert) * baseColor; //所以建议_RimMax=_rimMin+0.03！！！！！
-}
+//float3 NPR_Base_RimLight(float NdotV,float halfLambert,float3 baseColor)
+//{
+//    //return (1 - smoothstep(_RimRadius,_RimRadius + 0.03,NdotV)) * _RimIntensity * (1 - halfLambert) * baseColor;
+//    return (1 - smoothstep(_RimMin,_RimMin + 0.03, NdotV)) * _RimIntensity * (1 - halfLambert) * baseColor; //建议_RimMax=_rimMin+0.03
+//}
 
-// 真·菲涅尔边缘光 https://zhuanlan.zhihu.com/p/95986273
-float3 Fresnel_schlick(float VoN, float3 rF0) {
-		return rF0 + (1 - rF0) * pow(1 - VoN, 5);
-	}
-float3 Fresnel_extend(float VoN, float3 rF0) {
-	return rF0 + (1 - rF0) * pow(1 - VoN, 3);
-}
-float3 Fresnel_RimLight(float NdotV,float VdotL,float3 baseColor) {
-    half3 fresnel = Fresnel_extend(NdotV, float3(0.1, 0.1, 0.1));
-    //half3 fresnelResult = _FresnelEff * fresnel * (1 - VoL) / 2;
-    half3 fresnelResult = _RimIntensity * fresnel * (1 - VdotL) / 2 * baseColor.rgb;
-    return fresnelResult;
-}
+// 菲涅尔边缘光 https://zhuanlan.zhihu.com/p/95986273
+//float3 Fresnel_schlick(float VoN, float3 rF0) {
+//		return rF0 + (1 - rF0) * pow(1 - VoN, 5);
+//	}
+//float3 Fresnel_extend(float VoN, float3 rF0) {
+//	return rF0 + (1 - rF0) * pow(1 - VoN, 3);
+//}
+//float3 Fresnel_RimLight(float NdotV,float VdotL,float3 baseColor) {
+//    half3 fresnel = Fresnel_extend(NdotV, float3(0.1, 0.1, 0.1));
+//    //half3 fresnelResult = _FresnelEff * fresnel * (1 - VoL) / 2;
+//    half3 fresnelResult = _RimIntensity * fresnel * (1 - VdotL) / 2 * baseColor.rgb;
+//    return fresnelResult;
+//}
 
 //【JTRP】基础边缘光 。。。
 /*
-大概看了一下，有亿点点复杂，但本质上核心应该是使用dot(N, L)计算边缘光，然后有个RimLightMask贴图（非常重要，然而那个贴图只有鼻子那里有边缘光）
+核心应该是使用dot(N, L)计算边缘光，然后有个RimLightMask贴图
 */
 
 // =======================================================================================================
@@ -456,7 +396,7 @@ float GetScaleWithHight()
     y is the height of the camera’s target texture in pixels, 
     z is 1.0 + 1.0/width and w is 1.0 + 1.0/height.
     */
-	return _ScreenParams.y / 1080; // ？？？
+	return _ScreenParams.y / 1080;
 }
 /*
 float3 GetCameraRelativePositionWS(float3 _WorldSpaceCameraPos)
@@ -531,7 +471,6 @@ float3 GetSSRimLight(float3 color, ToonLightingData lightingData, float3 lightDi
 	
 	return _SSRimColor * intensity * lerp(1, color, _SSRimColor.a); //边缘光直接加在原color上 //A通道指示混合diffuse颜色的程度（=0时，...）
 }
-
 //【JTRP】屏幕空间深度边缘光 Screen Space Depth Rimlight
 // =======================================================================================================
 
@@ -579,9 +518,7 @@ half3 ShadeRimLight(ToonSurfaceData surfaceData, ToonLightingData lightingData, 
     half rimIntensity = surfaceData._rimIntensity;
 
     //half3 ramp = CalculateRamp(halfLambert);
-    //ramp *= CustomFaceShade(surfaceData, lightingData, lightingData, isAdditionalLight); //目前isAdditionalLight总是false，而且没用上
-                                                                        // CustomFaceShade用于初始化lightAttenuation或者faceShadowMask，返回值是0或1
-                                                                        // 不是，这个ramp干嘛用的？？？？？？？？？？？？？应该有一张渐变纹理？？？？
+    //ramp *= CustomFaceShade(surfaceData, lightingData, lightingData, isAdditionalLight); //目前isAdditionalLight总是false，而且没用上 // CustomFaceShade用于初始化lightAttenuation或者faceShadowMask，返回值是0或1
 
 	// initialize rimMask if not using custom rim light lightmask;
     //half3 rimMask = half3(1, 1, 1);
@@ -592,19 +529,18 @@ half3 ShadeRimLight(ToonSurfaceData surfaceData, ToonLightingData lightingData, 
     // 方法一：rimLight做法：使用NdotV + 半兰伯特（NdotL）
     half ndv =  1 - max(0, NdotV);
     half rim = smoothstep(rimMin, rimMax, ndv) * (1 - halfLambert); //控制边光的范围 //我们希望向光面的边缘光很弱，所以使用半兰伯特（NdotV）控制
-    // 你这代码有问题啊，太亮了
-    //if (useRimLight == 1) // 包括RimLight,1,FakeSSS,2（？） 则 线性插值
+    //有问题，太亮了
+    //if (useRimLight == 1)
     //{
     //    rim = lerp(rimMin, rimMax, ndv);
     //}
     rim = smoothstep(0, rimSmooth, rim); //控制边光的软硬（实际效果还行）（_RimSmooth=1时，smoothstep(0, 1, rim)≈rim，_RimSmooth=0时，smoothstep(0, 0, rim)=1）
-    //rimIntensity = 1; // ？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
     half3 rimLight = rim * lerp(1, rimMask.rgb, rimMaskStrength) * rimIntensity * rimColor.rgb; //控制边缘光的遮罩、强度、颜色
 
-    //// 方法二：自称·菲涅尔边缘光（和上面的没啥区别。。。）
+    //// 方法二：
     //half3 rimLight = NPR_Base_RimLight(NdotV, halfLambert, rimColor.rgb);
     
-    //// 方法三：真·菲涅尔边缘光（为啥没效果）
+    //// 方法三：菲涅尔边缘光
     //half3 rimLight = Fresnel_RimLight(NdotV, VdotL, rimColor.rgb);
     
     rimLight = lerp(rimLight, rimLight * surfaceData.albedo, _RimMulByBaseColor); // 控制边缘光颜色乘上albedo颜色（Base颜色）的程度
@@ -615,16 +551,15 @@ half3 ShadeRimLight(ToonSurfaceData surfaceData, ToonLightingData lightingData, 
 // 原版
 half3 CompositeAllLightResultsDefault(half3 indirectResult, half3 mainLightResult, half3 additionalLightSumResult, half3 emissionResult, ToonSurfaceData surfaceData, ToonLightingData lightingData)
 {
-    // 只是一个过于简单的实现，特别是indirectDirectLightSum 的取max操作，有点逆天。
+    // 只是一个过于简单的实现。
     // [remember you can write anything here, this is just a simple tutorial method]
     // here we prevent light over bright,
     // while still want to preserve light color's hue
 
     half3 indirectDirectLightSum  = max(indirectResult, mainLightResult + additionalLightSumResult); // pick the highest between indirect and direct light  
-                                                                                         // 取max(间接光照结果 和 主光源光照结果+额外光源光照结果)，也就是说除非光源很暗，否则间接光照的计算结果其实被扔掉了，这是否有点。。。。。。                                                        
-    //half3 indirectDirectLightSum  = indirectResult + mainLightResult + additionalLightSumResult; // 间接+直接
+    // 取max(间接光照结果 和 主光源光照结果+额外光源光照结果)，也就是说除非光源很暗，否则间接光照的计算结果其实被扔掉了，这是否有点。。。。。。                                                        
 
-    return surfaceData.albedo * indirectDirectLightSum  + emissionResult; // ***注意上面计算颜色的时候除了“自发光项”都没有乘albedo，在这里乘albedo(Base) Color，并加上自发光项
+    return surfaceData.albedo * indirectDirectLightSum  + emissionResult; // 上面计算颜色的时候除了“自发光项”都没有乘albedo
 }
 // 改进版
 half3 CompositeAllLightResults(half3 indirectResult, half3 mainLightResult, half3 additionalLightSumResult, half3 emissionResult, half3 rimlightResult, half3 faceShadowMask, ToonSurfaceData surfaceData, ToonLightingData lightingData, Light light, half shadowValue)
@@ -635,36 +570,31 @@ half3 CompositeAllLightResults(half3 indirectResult, half3 mainLightResult, half
     return result;*/
 
     // 仅用于脸部的[间接光照部分的]的sdf贴图形成的阴影 // ***注意***：非脸部faceShadowMask = (1,1,1)。
-    // faceShadowMask只有2种返回值：0=(0,0,0)或1=(1,1,1)，此时使用lerp语句是一种对避免使用if语句的技巧！
-    half3 shadowColor = lerp(surfaceData._shadowColor, 1, faceShadowMask); // faceShadowMask = (1,1,1)表示[间接光照部分的]完全没有阴影（indirectResult×1），=(0,0,0)表示100%接受阴影（indirectResult×_FaceShadowColor）
+    // faceShadowMask只有2种返回值：0=(0,0,0)或1=(1,1,1)，此时使用lerp语句是一种对避免使用if语句的技巧。
+    half3 shadowColor = lerp(surfaceData._shadowColor, 1, faceShadowMask);
 
-    //half3 indirectDirectLightSum  = max(indirectResult * shadowColor, mainLightResult + additionalLightSumResult); // max(间接，直接) 
-    // 除非光源很暗，否则间接光照的计算结果其实被扔掉了，这是否有点。。。。。。 
-    // 间接光照结果 * shadowColor 进行阴影修正
-    // 直接光照的暗部呢？？？？？ 不修正？？？？？  
-    
+    // 间接光照结果 * shadowColor 进行阴影修正；直接光照的暗部不修正？
     half3 indirectDirectLightSum = indirectResult * shadowColor + mainLightResult + additionalLightSumResult;  // 间接+直接 //TODO:感觉脸部阴影还是不太对
 
-    //Noirc的处理:
+    //一种处理:
     //half lightLuminance = Luminance(indirectDirectLightSum );
-    //half3 finalLightMulResult = indirectDirectLightSum  / max(1,lightLuminance / max(1,log(lightLuminance))); // allow controlled over bright using log | 在这里控制过亮 ？？？
+    //half3 finalLightMulResult = indirectDirectLightSum  / max(1,lightLuminance / max(1,log(lightLuminance))); // allow controlled over bright using log
     //return surfaceData.albedo * finalLightMulResult + emissionResult;
     
     // Screen Space rimLight | SS边缘光
     // TODO：改进lightDirWS
     half3 lightDirWS = -light.direction; // light.direction = _MainLightPosition.xyz; (mainLight)
-    // TODO：改进shadowValue // 0表示完全不在阴影中，1表示完全在阴影中
+    // TODO：改进shadowValue 0表示完全不在阴影中，1表示完全在阴影中
     half3 SSRimLight = GetSSRimLight(indirectDirectLightSum, lightingData, lightDirWS, shadowValue);
     //half3 SSRimLight = GetSSRimLight(surfaceData.albedo, lightingData, lightDirWS, shadowValue);
     
     half3 finalColor = indirectDirectLightSum + emissionResult + rimlightResult + SSRimLight;
-    //half3 finalColor = indirectDirectLightSum + emissionResult + rimlightResult;
 
     return finalColor;
 }
 
 half3 ShadeFaceShadow(ToonSurfaceData surfaceData, ToonLightingData lightingData, Light light)
 {
-	return CustomFaceShade(surfaceData, lightingData, light, false); //isAdditionalLight = false，然而这个isAdditionalLight没用上
+	return CustomFaceShade(surfaceData, lightingData, light, false); //这个isAdditionalLight（= false）没用上
 }
 #endif

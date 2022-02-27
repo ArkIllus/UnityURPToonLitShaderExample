@@ -15,17 +15,13 @@
 // It will include Unity built-in shader variables (except the lighting variables)
 // (https://docs.unity3d.com/Manual/SL-UnityShaderVariables.html
 // It will also include many utilitary functions. 
-// | ËùÓĞURP shader¶¼ĞèÒªincludeÕâ¸öÎÄ¼ş¡£
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
 // Include this if you are doing a lit shader. This includes lighting shader variables,
 // lighting and shadow functions
-// | Èç¹ûÄãÔÚ×öÒ»¸ö¹âÕÕ×ÅÉ«Æ÷£¨lit shader£©£¬includeÕâ¸öÎÄ¼ş¡£Õâ°üÀ¨×ÅÉ«Æ÷µÄ¹âÕÕ±äÁ¿£¨lighting shader variables£©£¬¹âÕÕºÍÒõÓ°º¯Êı
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
 // Material shader variables are not defined in SRP or URP shader library.
-// | ×ÅÉ«Æ÷µÄ²ÄÖÊ±äÁ¿£¨Material shader variables£©Î´ÔÚ SRP »ò URP ×ÅÉ«Æ÷¿âÖĞ¶¨Òå¡£
-// ÕâÒâÎ¶×Å _BaseColor¡¢_BaseMap¡¢_BaseMap_ST ÒÔ¼°×ÅÉ«Æ÷ÊôĞÔ²¿·ÖÖĞµÄËùÓĞ±äÁ¿±ØĞëÓÉ×ÅÉ«Æ÷±¾Éí¶¨Òå¡£
 // This means _BaseColor, _BaseMap, _BaseMap_ST, and all variables in the Properties section of a shader
 // must be defined by the shader itself. If you define all those properties in CBUFFER named
 // UnityPerMaterial, SRP can cache the material properties between frames and reduce significantly the cost
@@ -75,7 +71,7 @@ struct Varyings
 // (you should put all uniforms of all passes inside this single UnityPerMaterial CBUFFER! else SRP batching is not possible!)
 ///////////////////////////////////////////////////////////////////////////////////////
 
-// all sampler2D don't need to put inside CBUFFER | ËùÓĞµÄ sampler2D ¶¼²»ĞèÒª·ÅÔÚ CBUFFER ÀïÃæ 
+// all sampler2D don't need to put inside CBUFFER
 sampler2D _BaseMap; 
 sampler2D _RampMap;
 sampler2D _EmissionMap;
@@ -91,8 +87,6 @@ sampler2D _SSRimMask;
 Texture2D _CameraDepthTexture; //£¿
 
 // put all your uniforms(usually things inside .shader file's properties{}) inside this CBUFFER, in order to make SRP batcher compatible
-// | ½«ËùÓĞuniform£¨Í¨³£ÊÇ.shaderÎÄ¼şµÄproperties{}ÖĞµÄÄÚÈİ£©·ÅÔÚ´Ë CBUFFER£¨Ç¿µ÷ÏÂÊÇ¡°per material¡±µÄcbuffer£© ÖĞ£¬ÒÔÊ¹SRPÅú´¦ÀíÆ÷£¨SRP batcher£©¼æÈİ
-// É¶ÊÇuniform £¿£¿£¿£¿£¿£¿
 // see -> https://blogs.unity3d.com/2019/02/28/srp-batcher-speed-up-your-rendering/
 CBUFFER_START(UnityPerMaterial)
     
@@ -185,7 +179,6 @@ CBUFFER_START(UnityPerMaterial)
 
 CBUFFER_END
 
-// Õâ²»ÊÇÒ»¸ö¡°Ã¿¸ö²ÄÁÏµÄuniform¡±£¨per material uniform£©£¬ËùÒÔ·ÅÔÚCBUFFERÍâÃæ£¿£¿£¿
 //a special uniform for applyShadowBiasFixToHClipPos() only, it is not a per material uniform, 
 //so it is fine to write it outside our UnityPerMaterial CBUFFER
 float3 _LightDirection;
@@ -207,7 +200,7 @@ struct ToonSurfaceData
     //half3 _MetalMap; // ²ÉÑùÖµ
     half3 _MetalColor;
     // shadow color
-	half3 _shadowColor; // 
+	half3 _shadowColor;
     // rimlight
 	float _useRimLight;
 	half4 _rimColor;
@@ -251,9 +244,6 @@ Varyings VertexShaderWork(Attributes input)
     // VertexPositionInputs contains position in multiple spaces (world, view, homogeneous clip space, ndc)
     // Unity compiler will strip all unused references (say you don't use view space).
     // Therefore there is more flexibility at no additional cost with this struct.
-    // | VertexPositionInputs °üº¬¶à¸ö¿Õ¼äÖĞµÄÎ»ÖÃ£¨ÊÀ½ç¡¢¹Û²ì¡¢Æë´Î²Ã¼ô¿Õ¼ä¡¢ndc£©
-    // Unity ±àÒëÆ÷½«É¾³ıËùÓĞÎ´Ê¹ÓÃµÄÒıÓÃ
-    // Òò´Ë£¬Ê¹ÓÃ´ËstructÎŞĞè¶îÍâ³É±¾¼´¿É»ñµÃ¸ü´óµÄÁé»îĞÔ¡£
     /*
     VertexPositionInputs¶¨ÒåÔÚCore.hlslÖĞ£º
     struct VertexPositionInputs
@@ -269,7 +259,6 @@ Varyings VertexShaderWork(Attributes input)
     // Similar to VertexPositionInputs, VertexNormalInputs will contain normal, tangent and bitangent
     // in world space. If not used it will be stripped.
     /*
-    VertexNormalInputsºÍVertexPositionInputsÏàËÆ£¬Ò²¶¨ÒåÔÚCore.hlslÖĞ£¬°üº¬·¨Ïß¡¢ÇĞÏßºÍ¸±ÇĞÏß£¬ÆäÖĞÎ´Ê¹ÓÃµÄÒıÓÃÒ²»á±»Unity±àÒëÆ÷É¾³ı£º
     struct VertexNormalInputs
     {
         real3 tangentWS;
@@ -285,16 +274,16 @@ Varyings VertexShaderWork(Attributes input)
     positionWS = TransformPositionWSToOutlinePositionWS(vertexInput.positionWS, vertexInput.positionVS.z, vertexNormalInput.normalWS);
 #endif
 
-    // Computes fog factor per-vertex. | ¼ÆËãÖğ¶¥µãµÄÎíÒò×Ó¡£
+    // Computes fog factor per-vertex.
     // ComputeFogFactorÖ»ĞèÒªÒ»¸ö²ÎÊı£º²Ã¼ô¿Õ¼äÖĞµÄz×ø±ê
     float fogFactor = ComputeFogFactor(vertexInput.positionCS.z);
 
     // TRANSFORM_TEX is the same as the old shader library.
     output.uv = TRANSFORM_TEX(input.uv,_BaseMap);
 
-    // packing positionWS(xyz) & fog(w) into a vector4 | ½«ÊÀ½çÎ»ÖÃ(xyz) ºÍÎíÒò×Ó(w) ´ò°ü³ÉÒ»¸övector4
+    // packing positionWS(xyz) & fog(w) into a vector4
     output.positionWSAndFogFactor = float4(positionWS, fogFactor);
-    output.normalWS = vertexNormalInput.normalWS; //normlaized already by GetVertexNormalInputs(...) | Í¨¹ı GetVertexNormalInputs(...) ¹éÒ»»¯
+    output.normalWS = vertexNormalInput.normalWS; //normlaized already by GetVertexNormalInputs(...) 
 
     output.positionCS = TransformWorldToHClip(positionWS); //VP±ä»»
 
@@ -305,9 +294,6 @@ Varyings VertexShaderWork(Attributes input)
     // [Read ZOffset mask texture]
     // we can't use tex2D() in vertex shader because ddx & ddy is unknown before rasterization, 
     // so use tex2Dlod() with an explict mip level 0, put explict mip level 0 inside the 4th component of param uv)
-    // | [¶ÁÈ¡ZOffsetÕÚÕÖÎÆÀí]
-    // ÎÒÃÇ²»ÄÜÔÚ¶¥µã×ÅÉ«Æ÷ÖĞÊ¹ÓÃ tex2D()£¬ÒòÎªÔÚ¹âÕ¤»¯Ö®Ç° ddx & ddy ÊÇÎ´ÖªµÄ£¬£¿£¿
-    // ËùÒÔÊ¹ÓÃ tex2Dlod() £¬½« explict mip level=0£¨Ò²¾ÍÊÇlod£¬ÓÃÓÚÖ¸¶¨ÒªÊ¹ÓÃµÄÎÆÀí²ã£©·ÅÔÚ²ÎÊı uv µÄµÚ 4 ¸ö·ÖÁ¿ÖĞ
     //
     // ²¹³ä£ºÔÚShaderÖĞÊ¹ÓÃtex2D(tex, uv)µÄÊ±ºòÏàµ±ÓÚÔÚGPUÄÚ²¿Õ¹¿ªÈçÏÂ£º
     //tex2D(sampler2D tex, float4 uv) 
@@ -321,23 +307,20 @@ Varyings VertexShaderWork(Attributes input)
     // ÓÃ·¨£ºtex2Dlod(textureMap, float4(texCoord.xy, 0, lod))
     float outlineZOffsetMaskTexExplictMipLevel = 0;
     float outlineZOffsetMask = tex2Dlod(_OutlineZOffsetMaskTex, float4(input.uv,0,outlineZOffsetMaskTexExplictMipLevel)).r; //we assume it is a Black/White texture
-    //£¨¼ÙÉèËüÊÇÒ»¸öºÚ/°×ÎÆÀí £¬ËùÒÔ·µ»ØÖµÊÇfloat£¿£¿£¿ËÆºõÊÇºÚÉ«±íÊ¾²»ZÆ«ÒÆ£©
+    //£¨¼ÙÉèËüÊÇÒ»¸öºÚ/°×ÎÆÀí £¬ËùÒÔ·µ»ØÖµÊÇfloat£¿ºÚÉ«±íÊ¾²»ZÆ«ÒÆ£©
 
     // [Remap ZOffset texture value]
     // flip texture read value so default black area = apply ZOffset, because usually outline mask texture are using this format(black = hide outline)
-    // | [ÖØĞÂÓ³ÉäZOffsetÎÆÀíÖµ]
-    // ·­×ªÎÆÀí¶ÁÈ¡ÖµËùÒÔÄ¬ÈÏºÚÉ«ÇøÓò=Ó¦ÓÃZOffset£¬ÒòÎªÍ¨³£oultineÕÚÕÖÎÆÀíÊ¹ÓÃÕâÖÖ¸ñÊ½£¨ºÚÉ«=Òş²Øoutline£©
     outlineZOffsetMask = 1-outlineZOffsetMask;
-    outlineZOffsetMask = invLerpClamp(_OutlineZOffsetMaskRemapStart,_OutlineZOffsetMaskRemapEnd,outlineZOffsetMask);// allow user to flip value or remap | ÔÊĞíÓÃ»§·­×ªÖµ»òÖØĞÂÓ³Éä
+    outlineZOffsetMask = invLerpClamp(_OutlineZOffsetMaskRemapStart,_OutlineZOffsetMaskRemapEnd,outlineZOffsetMask);// allow user to flip value or remap
 
     // [Apply ZOffset, Use remapped value as ZOffset mask]
-    // | [Ó¦ÓÃZOffset£¬Ê¹ÓÃÖØĞÂÓ³ÉäµÄÖµ×÷ÎªZOffsetÑÚÂë] 
     // ÕâÀïÊ¹ÓÃÒÔÉÏÒ»³¤´®¼ÆËãµÃµ½µÄoutlineZOffsetMaskºÍÊäÈë²ÎÊı_OutlineZOffsetÒ»Í¬ĞŞÕı£¬ÁíÍâ¶ÔÁ³²¿£¨_IsFace=0/1£©ÕâÀï»¹¶îÍâ¼ÓÁËÒ»¸ö¾­ÑéĞÔµÄĞŞÕı
     output.positionCS = NiloGetNewClipPosWithZOffset(output.positionCS, _OutlineZOffset * outlineZOffsetMask + 0.03 * _IsFace);
 #endif
 
     // ShadowCaster pass needs special process to positionCS, else shadow artifact will appear
-    // | ShadowCaster pass ĞèÒª¶ÔpositionCSÌØÊâ´¦Àí£¬·ñÔò»á³öÏÖÒõÓ°Î±Ó°£¨shadow artifact£©£¿£¿£¿£¿£¿£¿
+    // | ShadowCaster pass ĞèÒª¶ÔpositionCSÌØÊâ´¦Àí£¬·ñÔò»á³öÏÖÒõÓ°Î±Ó°£¨shadow artifact£©
     //--------------------------------------------------------------------------------------
 #ifdef ToonShaderApplyShadowBiasFix
     // see GetShadowPositionHClip() in URP/Shaders/ShadowCasterPass.hlsl
@@ -378,8 +361,7 @@ half3 GetFinalEmissionColor(Varyings input, float4 baseColorFinal)
         {   
             // Ô­ÉñµÄ½ÇÉ«×Ô·¢¹â£¬Ê¹ÓÃBaseMapµÄAlphaÍ¨µÀ×÷Îª×Ô·¢¹âMask£¬RGBÍ¨µÀ×÷Îª×Ô·¢¹âÑÕÉ«
 
-            //TODO£ºÕâÀï²»ÓÃbaseColorFinal£¬ÓÃtex2D(_BaseMap, input.uv)£¬
-            //µ«ÕâÑùºÍÉÏÃæµÄGetFinalBaseColor¾Í²ÉÑùÁË2´Î_BaseMap£¬ÖØ¸´ÁË
+            //TODO£ºÕâÀï²»ÓÃbaseColorFinal£¬ÓÃtex2D(_BaseMap, input.uv)£¬µ«ÕâÑùºÍÉÏÃæµÄGetFinalBaseColor¾Í²ÉÑùÁË2´Î_BaseMap£¬ÖØ¸´ÁË
             result = baseColorFinal.rgb * baseColorFinal.a * _EmissionStrength * _EmissionColor.rgb;
             result *= _isBlink ? abs((frac(_Time.y * 0.5) - 0.5) * 2) : 1; //ÉÁË¸Ğ§¹û
         }
@@ -397,7 +379,7 @@ half GetFinalOcculsion(Varyings input)
     half result = 1; //Ã»ÓĞ¿ªÆôOcculsionÊ±£¬·µ»ØÖµÎª1
     if(_UseOcclusion)
     {
-        half4 texValue = tex2D(_OcclusionMap, input.uv); //_OcclusionMapÊÇÒ»ÕÅ»Ò¶ÈÍ¼£¨Ò»°ãÀ´Ëµ£¿£©
+        half4 texValue = tex2D(_OcclusionMap, input.uv); //_OcclusionMapÊÇÒ»ÕÅ»Ò¶ÈÍ¼
         half occlusionValue = dot(texValue, _OcclusionMapChannelMask); //Ä¬ÈÏÖ»È¡RÍ¨µÀ //Õâ¸öÖµ¡Ê[0,1]
         occlusionValue = lerp(1, occlusionValue, _OcclusionStrength); //¿ØÖÆÒ»ÏÂÕÚÕÖÇ¿¶È
         occlusionValue = invLerpClamp(_OcclusionRemapStart, _OcclusionRemapEnd, occlusionValue); //¹©ÓÃ»§µ÷Õû
@@ -553,7 +535,7 @@ ToonLightingData InitializeLightingData(Varyings input) // ³õÊ¼»¯ lightingData ½
     ToonLightingData lightingData;
     lightingData.positionWS = input.positionWSAndFogFactor.xyz;
     lightingData.viewDirectionWS = SafeNormalize(GetCameraPositionWS() - lightingData.positionWS); //SafeNormalize±ÜÃâ¹éÒ»»¯¼ÆËã¹ı³ÌÖĞ³ıÒÔ0  
-    lightingData.normalWS = normalize(input.normalWS); //interpolated normal is NOT unit vector, we need to normalize it | ²åÖµ·¨Ïß²»ÊÇµ¥Î»ÏòÁ¿£¬ÎÒÃÇĞèÒª¶ÔÆä½øĞĞ¹éÒ»»¯
+    lightingData.normalWS = normalize(input.normalWS); //interpolated normal is NOT unit vector, we need to normalize it
     lightingData.positionSS = input.screenPos.xy / input.screenPos.w * _ScreenParams.xy; //´Ó[0,w]Ó³Éäµ½[0,width]ºÍ[0,height]
     lightingData.uv = input.uv;
 
@@ -567,12 +549,10 @@ ToonLightingData InitializeLightingData(Varyings input) // ³õÊ¼»¯ lightingData ½
 
 // all lighting equation written inside this .hlsl,
 // just by editing this .hlsl can control most of the visual result.
-// | ËùÓĞ¹âÕÕ·½³Ì¶¼Ğ´ÔÚÕâ¸ö .hlsl ÖĞ£¬½ö½öÍ¨¹ı±à¼­Õâ¸ö .hlsl ¾Í¿ÉÒÔ¿ØÖÆ´ó²¿·ÖµÄÊÓ¾õĞ§¹û¡£
 #include "SimpleURPToonLitOutlineExample_LightingEquation.hlsl"
 
 // this function contains no lighting logic, it just pass lighting results data around
 // the job done in this function is "do shadow mapping depth test positionWS offset"
-// | Õâ¸öº¯Êı²»°üº¬¹âÕÕÂß¼­£¬ËüÖ»ÊÇ´«µİ¹âÕÕ½á¹ûÊı¾İ£¬Õâ¸öº¯ÊıÖĞÍê³ÉµÄ¹¤×÷ÊÇ¡°ÒõÓ°Ó³Éä Éî¶È²âÊÔ ÊÀ½çÎ»ÖÃÆ«ÒÆ¡±£¿
 half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
 {
     //==============================================================================================
@@ -584,8 +564,8 @@ half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
     // It contains light's | °üº¬¹âµÄ
     // - direction | ·½Ïò
     // - color | ÑÕÉ«
-    // - distanceAttenuation | ¾àÀëË¥¼õ£¿ 
-    // - shadowAttenuation | ÒõÓ°Ë¥¼õ£¿
+    // - distanceAttenuation | ¾àÀëË¥¼õ
+    // - shadowAttenuation | ÒõÓ°Ë¥¼õ
     /*
     // Light½á¹¹Ìå¶¨ÒåÓÚLighting.hlsl£º
     struct Light
@@ -598,10 +578,10 @@ half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
     */
     //
     // URP take different shading approaches depending on light and platform.
-    // You should never reference light shader variables in your shader, instead use the | Îñ±ØÊ¹ÓÃ
+    // You should never reference light shader variables in your shader, instead use the
     // -GetMainLight()
     // -GetLight()
-    // funcitons to fill this Light struct. | À´Ìî³äLight½á¹¹Ìå
+    // funcitons to fill this Light struct.
     //////////////////////////////////////////////////////////////////////////////////
 
     //==============================================================================================
@@ -611,10 +591,6 @@ half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
     // It is shaded outside the light loop and it has a specific set of variables and shading path
     // so we can be as fast as possible in the case when there's only a single directional light
     // You can pass optionally a shadowCoord. If so, shadowAttenuation will be computed.
-    //| Ö÷¹âÔ´Main lightÊÇ×îÁÁµÄ¶¨Ïò¹âÔ´directional light¡£
-    // ËüÔÚlight loopÖ®Íâ±»×ÅÉ«£¬²¢ÇÒËüÓĞÒ»×éÌØ¶¨µÄ±äÁ¿ºÍ×ÅÉ«Â·¾¶
-    // ËùÒÔÎÒÃÇ¿ÉÒÔÔÚÖ»ÓĞÒ»¸ö¶¨Ïò¹âÔ´µÄÇé¿öÏÂ¾¡¿ÉÄÜ¿ì
-    // GetMainLight¿ÉÒÔÑ¡Ôñ´«µİÒ»¸öfloat4 shadowCoord²ÎÊı£¬´ËÊ±½«¼ÆËã light.shadowAttenuation¡£
     /*
     // GetMainLight()¶¨ÒåÓÚLighting.hlsl£º
     Light GetMainLight()
@@ -646,16 +622,14 @@ half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
 
     // ½«positionWSÏòÖ÷¹âÔ´µÄ·½Ïò½øĞĞÆ«ÒÆ£¬×÷Îª´«µİ¸øTransformWorldToShadowCoordº¯ÊıµÄpositionWS²ÎÊı
     // ×¢ÒâÁ³²¿ _IsFace ¶îÍâ¶àÆ«ÒÆÁËÒ»µã
-    float3 shadowTestPosWS = lightingData.positionWS + mainLight.direction * (_ReceiveShadowMappingPosOffset + _IsFace); // ÎªÉ¶£¿£¿£¿
+    float3 shadowTestPosWS = lightingData.positionWS + mainLight.direction * (_ReceiveShadowMappingPosOffset + _IsFace); //
 #ifdef _MAIN_LIGHT_SHADOWS
     // ¼ÆËãÖ÷¹âÔ´ÒõÓ°£¬¼ÆËãÒõÓ°×ø±ê
-    // compute the shadow coords in the fragment shader now due to this change | ÓÉÓÚÕâ¸ö±ä»¯£¬ÏÖÔÚÔÚÆ¬Ôª×ÅÉ«Æ÷ÖĞ¼ÆËãÒõÓ°×ø±ê
+    // compute the shadow coords in the fragment shader now due to this change
     // https://forum.unity.com/threads/shadow-cascades-weird-since-7-2-0.828453/#post-5516425
 
     // _ReceiveShadowMappingPosOffset will control the offset the shadow comparsion position, 
     // doing this is usually for hide ugly self shadow for shadow sensitive area like face
-    // | _ReceiveShadowMappingPosOffset ½«¿ØÖÆÒõÓ°Î»ÖÃµÄÆ«ÒÆÁ¿£¨£¿£©£¬ 
-    // ÕâÑù×öÍ¨³£ÊÇÎªÁËÒş²ØÒõÓ°Ãô¸ĞÇøÓò£¨ÈçÃæ²¿£©ÄÑ¿´µÄ×ÔÎÒÒõÓ°
     /*
     // TransformWorldToShadowCoordº¯Êı¶¨ÒåÔÚShadow.hlslÖĞ
     float4 TransformWorldToShadowCoord(float3 positionWS)
@@ -670,7 +644,7 @@ half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
 
         return float4(shadowCoord.xyz, cascadeIndex);
     }
-    // MainLightRealtimeShadowº¯ÊıÒ²¶¨ÒåÔÚShadow.hlslÖĞ£¬ÓÃÓÚ¼ÆËãÒõÓ°Ë¥¼õ //²»ÊÇºÜ¶®£¿£¿
+    // MainLightRealtimeShadowº¯ÊıÒ²¶¨ÒåÔÚShadow.hlslÖĞ£¬ÓÃÓÚ¼ÆËãÒõÓ°Ë¥¼õ
     half MainLightRealtimeShadow(float4 shadowCoord)
     {
     #if !defined(MAIN_LIGHT_CALCULATE_SHADOWS) //_MAIN_LIGHT_SHADOWS»á×Ô¼ºÔÙ¶¨ÒåÒ»¸öMAIN_LIGHT_CALCULATE_SHADOWS
@@ -701,8 +675,8 @@ half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
     half3 additionalLightSumResult = 0;
 
 #ifdef _ADDITIONAL_LIGHTS
-    // Returns the amount of lights affecting the object being renderer. | ·µ»ØÓ°ÏìäÖÈ¾¶ÔÏóµÄ¹âÔ´ÊıÁ¿¡£
-    // These lights are culled per-object in the forward renderer of URP. | ÕâĞ©µÆÔÚ URP µÄÇ°ÏòäÖÈ¾Æ÷ÖĞ±»Öğ¶ÔÏóÌŞ³ı¡££¿£¿£¿
+    // Returns the amount of lights affecting the object being renderer.
+    // These lights are culled per-object in the forward renderer of URP.
     int additionalLightsCount = GetAdditionalLightsCount();
     for (int i = 0; i < additionalLightsCount; ++i)
     {
@@ -730,9 +704,9 @@ half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
         }
         */
         int perObjectLightIndex = GetPerObjectLightIndex(i);
-        Light light = GetAdditionalPerObjectLight(perObjectLightIndex, lightingData.positionWS); // use original positionWS for lighting | Ê¹ÓÃÔ­Ê¼positionWS½øĞĞÕÕÃ÷
+        Light light = GetAdditionalPerObjectLight(perObjectLightIndex, lightingData.positionWS); // use original positionWS for lighting
         //light.shadowAttenuation = AdditionalLightRealtimeShadow(perObjectLightIndex, shadowTestPosWS); //Ô­°æ 
-        light.shadowAttenuation = AdditionalLightShadow(perObjectLightIndex, shadowTestPosWS, 0, 0); //¸Ä½ø //use offseted positionWS for shadow test | Ê¹ÓÃÆ«ÒÆpositionWS½øĞĞÒõÓ°²âÊÔ£¨¼ÆËãÒõÓ°Ë¥¼õ£© //É¶½ĞÒõÓ°²âÊÔ£¿£¿£¿
+        light.shadowAttenuation = AdditionalLightShadow(perObjectLightIndex, shadowTestPosWS, 0, 0); //¸Ä½ø //use offseted positionWS for shadow test £¿
 
         // Different function used to shade additional lights.
         additionalLightSumResult += ShadeSingleLight(surfaceData, lightingData, light, true);
@@ -752,7 +726,7 @@ half3 ShadeAllLights(ToonSurfaceData surfaceData, ToonLightingData lightingData)
 
     //==============================================================================================
     // ºÏ³É£º¼ä½Ó¹âÕÕ + Ö÷¹âÕÕ + ËùÓĞ¶îÍâ¹âÕÕ + ×Ô·¢¹â + ÆÕÍ¨±ßÔµ¹â
-    // TODO£º¸Ä½øshadowValue // 0±íÊ¾ÍêÈ«²»ÔÚÒõÓ°ÖĞ£¬1±íÊ¾ÍêÈ«ÔÚÒõÓ°ÖĞ
+    // TODO£º¸Ä½øshadowValue 0±íÊ¾ÍêÈ«²»ÔÚÒõÓ°ÖĞ£¬1±íÊ¾ÍêÈ«ÔÚÒõÓ°ÖĞ
     //half shadowValue = 1 - mainLight_litOrShadowArea;
     half shadowValue = 0;
     return CompositeAllLightResults(indirectResult, mainLightResult, additionalLightSumResult, emissionResult, rimlightResult, faceShadowMask, surfaceData, lightingData, mainLight, shadowValue);
@@ -778,22 +752,21 @@ half4 ShadeFinalColor(Varyings input) : SV_TARGET
 {
     // first prepare all data for lighting function | Ê×ÏÈ×¼±¸ÕÕÃ÷¹¦ÄÜµÄËùÓĞÊı¾İ
 
-    // fillin ToonSurfaceData struct: | Ìî³ä ToonSurfaceData ½á¹¹Ìå£º
+    // fillin ToonSurfaceData struct:
     ToonSurfaceData surfaceData = InitializeSurfaceData(input);
 
-    // fillin ToonLightingData struct: | Ìî³ä ToonLightingData ½á¹¹Ìå£º
+    // fillin ToonLightingData struct:
     ToonLightingData lightingData = InitializeLightingData(input);
  
-    // apply all lighting calculation | Ó¦ÓÃËùÓĞ¹âÕÕ¼ÆËã
+    // apply all lighting calculation
     half3 color = ShadeAllLights(surfaceData, lightingData);
 
 #ifdef ToonShaderIsOutline
     color = ConvertSurfaceColorToOutlineColor(color); // Èç¹ûÊÇoutline£¬ĞèÒª°Ñ±íÃæµÄÑÕÉ«×ª»»³ÉoutlineµÄÑÕÉ«
-#else 
-    color = 1;
+//#else 
+//    color = 1; //²âÊÔÓÃ£¬¹Û²ìoutlineĞ§¹û
 #endif
 
-    // ÕâÊÇÊ¹ÓÃµÄÊÇ×Ô¶¨ÒåµÄApplyFogº¯Êı£¬·ÇÄÚÖÃº¯Êı
     color = ApplyFog(color, input);
 
     return half4(color, surfaceData.alpha);

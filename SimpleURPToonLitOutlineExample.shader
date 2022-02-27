@@ -102,7 +102,7 @@ Shader "SimpleURPToonLitExample(With Outline)"
         _MetalColor("_Metal Color", Color) = (1, 1, 1, 1) //到底需不需要这个呢
 
         [Header(Rim Light)]
-        [Enum(off,0,RimLight,1,FakeSSS,2)]_UseRimLight("_UseRimLight", Float) = 0 //FakeSSS好像没有使用啊？
+        [Enum(off,0,RimLight,1,FakeSSS,2)]_UseRimLight("_UseRimLight", Float) = 0 //FakeSSS没有使用
         [HDR]_RimColor("_RimColor (alpha to control strength)", Color) = (0.8, 0.8, 0.8, 0.5) //rgb通道控制边缘光颜色，a通道控制边缘光强度
         _RimMin ("RimMin", Range(0, 2)) = 0.8 //控制边缘光的范围
         _RimMax ("RimMax", Range(0, 2)) = 1 //控制边缘光的范围
@@ -111,7 +111,7 @@ Shader "SimpleURPToonLitExample(With Outline)"
         _RimMaskStrength("_RimMaskStrength", Range(0.0, 1.0)) = 1.0 // 控制遮罩的程度
         _RimMulByBaseColor("_RimMulByBaseColor", Range(0,1)) = 0.5 //控制边缘光颜色乘上albedo颜色（Base颜色）的程度
         _RimIntensity("_RimIntensity", Range(0.0, 4.0)) = 1.0 // 控制边缘光的强度
-        // TODO: rampTexture 渐变纹理 ？
+        // TODO: rampTexture 渐变纹理
 
         [Header(Screen Space Rim Light)]
 		[Toggle]_EnableSSRim ("Enable SS Rim", Float) = 0
@@ -133,15 +133,15 @@ Shader "SimpleURPToonLitExample(With Outline)"
         //TODO
 
         [Header(Shadow mapping)]
-        _ReceiveShadowMappingAmount("_ReceiveShadowMappingAmount", Range(0,1)) = 0.65 // 用来控制应用阴影衰减的程度（=0时没有阴影？）
-        _ReceiveShadowMappingPosOffset("_ReceiveShadowMappingPosOffset (increase it if is face!)", Float) = 0 //increase it if is face! //？？？？？？
-        _ShadowMapColor("_ShadowMapColor", Color) = (1,0.825,0.78) // 用来控制阴影的颜色 //NoirRC不用了？
+        _ReceiveShadowMappingAmount("_ReceiveShadowMappingAmount", Range(0,1)) = 0.65 // 用来控制应用阴影衰减的程度（=0时没有阴影）
+        _ReceiveShadowMappingPosOffset("_ReceiveShadowMappingPosOffset (increase it if is face!)", Float) = 0 //increase it if is face!
+        _ShadowMapColor("_ShadowMapColor", Color) = (1,0.825,0.78) // 用来控制阴影的颜色
 
         [Header(Outline)]
         _OutlineWidth("_OutlineWidth (World Space)", Range(0,5)) = 1
         _OutlineColor("_OutlineColor", Color) = (0.5,0.5,0.5,1) // 用来控制outline的颜色，会把计算得到的这个地方（片元）原本的color乘上这个_OutlineColor
         _OutlineZOffset("_OutlineZOffset (View Space) (increase it if is face!)", Range(0,1)) = 0.0001 //increase it if is face! // 用于控制outline的Z偏移，和下面的_OutlineZOffsetMaskTex一起使用
-        [NoScaleOffset]_OutlineZOffsetMaskTex("_OutlineZOffsetMask (black is apply ZOffset)", 2D) = "black" {} // 用于控制outline Z偏移的程度的贴图（似乎是黑色表示不Z偏移），和上面的_OutlineZOffset一起使用
+        [NoScaleOffset]_OutlineZOffsetMaskTex("_OutlineZOffsetMask (black is apply ZOffset)", 2D) = "black" {} // 用于控制outline Z偏移的程度的贴图（黑色表示不Z偏移），和上面的_OutlineZOffset一起使用
         _OutlineZOffsetMaskRemapStart("_OutlineZOffsetMaskRemapStart", Range(0,1)) = 0
         _OutlineZOffsetMaskRemapEnd("_OutlineZOffsetMaskRemapEnd", Range(0,1)) = 1
     }
@@ -199,18 +199,6 @@ Shader "SimpleURPToonLitExample(With Outline)"
 
             // explict render state to avoid confusion
             // you can expose these render state to material inspector if needed (see URP's Lit.shader)
-            /* 
-            //可以像URP Lit.shader那样在Properties中增加：
-            [HideInInspector] _SrcBlend("__src", Float) = 1.0
-            [HideInInspector] _DstBlend("__dst", Float) = 0.0
-            [HideInInspector] _ZWrite("__zw", Float) = 1.0
-            [HideInInspector] _Cull("__cull", Float) = 2.0
-            //然后在这里使用：
-            Blend[_SrcBlend][_DstBlend]
-            ZWrite[_ZWrite]
-            Cull[_Cull]
-            //不过感觉没什么意义
-            */
             Cull Back
             ZTest LEqual
             ZWrite On
@@ -220,7 +208,6 @@ Shader "SimpleURPToonLitExample(With Outline)"
 
             // ---------------------------------------------------------------------------------------------
             // Universal Render Pipeline keywords (you can always copy this section from URP's Lit.shader)
-            // | 你总是可以从URP的Lit Shader拷贝这部分 // 但是只有ForwardLit和Outline和GBuffer Pass需要这些指令
             // When doing custom shaders you most often want to copy and paste these #pragmas
             // These multi_compile variants are stripped from the build depending on:
             // 1) Settings in the URP Asset assigned in the GraphicsSettings at build time
@@ -236,10 +223,10 @@ Shader "SimpleURPToonLitExample(With Outline)"
             //#pragma multi_compile_fragment _ _SCREEN_SPACE_OCCLUSION 
             //#pragma multi_compile _ LIGHTMAP_SHADOW_MIXING
             //#pragma multi_compile _ SHADOWS_SHADOWMASK
-            // 5个关键字声明分别是：？？？？？？
+            // 5个关键字声明分别是：
             // 主光源阴影，该段关键字是会自己再定义一个MAIN_LIGHT_CALCULATE_SHADOWS，用于在MainLightRealtimeShadow(float4 shadowCoord)函数里计算得到正确的阴影衰减，是必须内容。
             // 主光源层级阴影是否开启，该关键字是为了让函数TransformWorldToShadowCoord(float3 positionWS)得到正确的阴影坐标，是必须内容。
-            // 开启额外光源，_ADDITIONAL_LIGHTS_VERTEX会在顶点着色器计算额外光照，光照模型是Lambert。_ADDITIONAL_LIGHTS会在片元着色器计算额外光照，光照模型是简易的PBR。？？？
+            // 开启额外光源，_ADDITIONAL_LIGHTS_VERTEX会在顶点着色器计算额外光照，光照模型是Lambert。_ADDITIONAL_LIGHTS会在片元着色器计算额外光照，光照模型是简易的PBR。
             // 额外光源阴影，该关键字是为了函数AdditionalLightRealtimeShadow(int lightIndex, float3 positionWS)得到正确的阴影衰减，是必须内容。
             // 开启软阴影
             
@@ -322,32 +309,26 @@ Shader "SimpleURPToonLitExample(With Outline)"
         }
  
         // ShadowCaster pass. Used for rendering URP's shadowmaps
-        // 把物体的深度信息渲染到 光源的阴影映射纹理(shadowmap) 
-        // 至于摄像机的深度纹理(CameraDepthTexture)是不是已经移到DepthOnly Pass中了？？？？？？
         Pass
         {
             Name "ShadowCaster"
             Tags{"LightMode" = "ShadowCaster"}
 
             // more explict render state to avoid confusion
-            ZWrite On // the only goal of this pass is to write depth! | ShadowCaster pass唯一的目标就是深度写入
+            ZWrite On // the only goal of this pass is to write depth!
             ZTest LEqual // early exit at Early-Z stage if possible            
-            ColorMask 0 // we don't care about color, we just want to write depth, ColorMask 0 will save some write bandwidth | 我们不关心颜色，我们只想深度写入，ColorMask 0将节省一些写带宽
-            Cull Back // support Cull[_Cull] requires "flip vertex normal" using VFACE in fragment shader, which is maybe beyond the scope of a simple tutorial shader
-                      // | 支持Cull[_Cull]需要在片段着色器中使用 VFACE“翻转顶点法线”，这可能超出了简单的教程着色器的范围 ？？？？？？？？？ // TODO
+            ColorMask 0 // we don't care about color, we just want to write depth, ColorMask 0 will save some write bandwidth
+            Cull Back // support Cull[_Cull] requires "flip vertex normal" using VFACE in fragment shader, which is maybe beyond the scope of a simple tutorial shader // TODO
 
             HLSLPROGRAM
 
             // the only keywords we need in this pass = _UseAlphaClipping, which is already defined inside the HLSLINCLUDE block
             // (so no need to write any multi_compile or shader_feature in this pass)
-            // | 这个pass中我们需要的唯一关键字 = _UseAlphaClipping，它已经在 HLSLINCLUDE 块中定义了 (所以在这个过程中不需要编写任何 multi_compile 或 shader_feature)
 
             #pragma vertex VertexShaderWork
             #pragma fragment BaseColorAlphaClipTest // we only need to do Clip(), no need shading
-                                                    // 只是做 透明度测试 ，没有其他任何工作
 
             // because it is a ShadowCaster pass, define "ToonShaderApplyShadowBiasFix" to inject "remove shadow mapping artifact" code into VertexShaderWork()
-            // 由于这是一个ShadowCaster pass，定义一个宏，将“移除阴影映射工件（？？？）”代码注入顶点着色器VertexShaderWork()中
             #define ToonShaderApplyShadowBiasFix
 
             // all shader logic written inside this .hlsl, remember to write all #define BEFORE writing #include
@@ -371,37 +352,27 @@ Shader "SimpleURPToonLitExample(With Outline)"
 
         // DepthOnly pass. Used for rendering URP's offscreen depth prepass (you can search DepthOnlyPass.cs in URP package)
         // For example, when depth texture is on, we need to perform this offscreen depth prepass for this toon shader. 
-        // | DepthOnly Pass，用于渲染 URP 的offscreen depth prepass ？？？？？？（可以搜索URP包中的DepthOnlyPass.cs）
-        // 例如，当深度纹理打开时，我们需要为这个 toon 着色器执行offscreen depth prepass。
-        //
-        // 猜测：把物体的深度信息渲染到RenderTarget（默认为摄像机的深度纹理(CameraDepthTexture)）中  （取决于是否使用屏幕空间的阴影映射技术Screenspace Shadow Map？？？）
-        //
         // DepthOnly Pass 仅渲染深度。目的是提前处理深度信息，从而起到减少重复绘制（OverDraw）的作用。
-        // 在默认的最简渲染流程下，这个Pass是不执行的。而当诸如全屏后处理等特性被启用时？（camera的depth texture设为On时），这个Pass会被加入渲染流程中，导致DrawCall增加。
         Pass
         {
             Name "DepthOnly"
             Tags{"LightMode" = "DepthOnly"}
 
             // more explict render state to avoid confusion
-            ZWrite On // the only goal of this pass is to write depth! | DepthOnly pass唯一的目标就是深度写入
+            ZWrite On // the only goal of this pass is to write depth!
             ZTest LEqual // early exit at Early-Z stage if possible            
-            ColorMask 0 // we don't care about color, we just want to write depth, ColorMask 0 will save some write bandwidth | 我们不关心颜色，我们只想深度写入，ColorMask 0将节省一些写带宽
-            Cull Back // support Cull[_Cull] requires "flip vertex normal" using VFACE in fragment shader, which is maybe beyond the scope of a simple tutorial shader
-                      // | 支持Cull[_Cull]需要在片段着色器中使用 VFACE“翻转顶点法线”，这可能超出了简单的教程着色器的范围 ？？？？？？？？？ // TODO
+            ColorMask 0 // we don't care about color, we just want to write depth, ColorMask 0 will save some write bandwidth
+            Cull Back // support Cull[_Cull] requires "flip vertex normal" using VFACE in fragment shader, which is maybe beyond the scope of a simple tutorial shader // TODO
 
             HLSLPROGRAM
 
             // the only keywords we need in this pass = _UseAlphaClipping, which is already defined inside the HLSLINCLUDE block
             // (so no need to write any multi_compile or shader_feature in this pass)
-            // | 这个pass中我们需要的唯一关键字 = _UseAlphaClipping，它已经在 HLSLINCLUDE 块中定义了 (所以在这个过程中不需要编写任何 multi_compile 或 shader_feature)
 
             #pragma vertex VertexShaderWork
             #pragma fragment BaseColorAlphaClipTest // we only need to do Clip(), no need color shadings
-                                                    //// 只是做 透明度测试 ，没有其他任何工作
 
             // because Outline area should write to depth also, define "ToonShaderIsOutline" to inject outline related code into VertexShaderWork()
-            // | 因为 Outline 区域也应该深度写入，所以定义这个宏，将outline相关代码注入到 顶点着色器VertexShaderWork()中
             #define ToonShaderIsOutline
 
             // all shader logic written inside this .hlsl, remember to write all #define BEFORE writing #include
@@ -410,9 +381,9 @@ Shader "SimpleURPToonLitExample(With Outline)"
             ENDHLSL
         }
 
-        // Starting from version 10.0.x, URP can generate a normal texture called _CameraNormalsTexture. | 从10.0.x 版本开始，URP 可以生成一个称为 _CameraNormalsTexture 的法线纹理。
-        // To render to this texture in your custom shader, add a Pass with the name DepthNormals. | 要在自定义着色器中渲染这个纹理，添加一个名为 DepthNormals 的 Pass。
-        // For example, see the implementation in Lit.shader. | 例子，请参见 Lit.shader 中的实现。
+        // Starting from version 10.0.x, URP can generate a normal texture called _CameraNormalsTexture.
+        // To render to this texture in your custom shader, add a Pass with the name DepthNormals.
+        // For example, see the implementation in Lit.shader.
         // TODO: DepthNormals pass (see URP's Lit.shader) | TODO: DepthNormals Pass (参见 URP 的 Lit.shader)
         /*
         Pass
